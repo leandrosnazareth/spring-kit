@@ -354,7 +354,12 @@
 
                 <!-- Dependencies -->
                 <div class="form-section">
-                    <h2><i class="fa-solid fa-cubes section-icon"></i> Dependencies</h2>
+                    <h2>
+                        <i class="fa-solid fa-cubes section-icon"></i> Dependencies
+                        <span id="depCounter" style="font-size: 0.8em; color: #7f8c8d; font-weight: normal; margin-left: 10px;">
+                            (0 selected)
+                        </span>
+                    </h2>
                     
                     <div class="form-group" style="margin-bottom: 20px;">
                         <label for="searchDeps">
@@ -445,6 +450,7 @@
                 } else {
                     item.classList.remove('selected');
                 }
+                updateDependencyCounter();
             });
             
             // Initialize selected state
@@ -452,6 +458,14 @@
                 item.classList.add('selected');
             }
         });
+        
+        function updateDependencyCounter() {
+            const checkedCount = document.querySelectorAll('.dependency-item input[type="checkbox"]:checked').length;
+            document.getElementById('depCounter').textContent = `(${checkedCount} selected)`;
+        }
+        
+        // Initialize counter
+        updateDependencyCounter();
     </script>
 </body>
 </html>
