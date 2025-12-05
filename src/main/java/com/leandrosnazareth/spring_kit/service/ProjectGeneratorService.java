@@ -1,7 +1,9 @@
 package com.leandrosnazareth.spring_kit.service;
 
+import com.leandrosnazareth.spring_kit.model.CrudGenerationRequest;
 import com.leandrosnazareth.spring_kit.model.Dependency;
 import com.leandrosnazareth.spring_kit.model.ProjectRequest;
+import tools.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -15,9 +17,15 @@ import java.util.zip.ZipOutputStream;
 public class ProjectGeneratorService {
 
     private final DependencyService dependencyService;
+    private final CrudScaffoldingService crudScaffoldingService;
+    private final ObjectMapper objectMapper;
 
-    public ProjectGeneratorService(DependencyService dependencyService) {
+    public ProjectGeneratorService(DependencyService dependencyService,
+                                   CrudScaffoldingService crudScaffoldingService,
+                                   ObjectMapper objectMapper) {
         this.dependencyService = dependencyService;
+        this.crudScaffoldingService = crudScaffoldingService;
+        this.objectMapper = objectMapper;
     }
 
     public byte[] generateProject(ProjectRequest request) throws IOException {
@@ -53,6 +61,8 @@ public class ProjectGeneratorService {
         // Generate .gitignore
         addFileToZip(zos, baseDir + ".gitignore", generateGitignore(request));
 
+        appendCrudModuleIfPresent(request, srcMainJava, zos);
+
         zos.close();
         return baos.toByteArray();
     }
@@ -62,6 +72,19 @@ public class ProjectGeneratorService {
         zos.putNextEntry(entry);
         zos.write(content.getBytes(StandardCharsets.UTF_8));
         zos.closeEntry();
+    }
+
+    private void appendCrudModuleIfPresent(ProjectRequest request, String srcMainJava, ZipOutputStream zos) throws IOException {
+        if (request.getCrudDefinition() == null || request.getCrudDefinition().isBlank()) {
+            return;
+        }
+        CrudGenerationRequest crudRequest = objectMapper.readValue(request.getCrudDefinition(), CrudGenerationRequest.class);
+        if (crudRequest.getClasses() == null || crudRequest.getClasses().isEmpty()) {
+            return;
+        }
+        crudRequest.setBasePackage(request.getPackageName());
+        crudRequest.setModuleName(request.getArtifactId() + "-crud");
+        crudScaffoldingService.appendCrudToProject(crudRequest, srcMainJava, request.getPackageName(), zos);
     }
 
     private String generatePomXml(ProjectRequest request) {

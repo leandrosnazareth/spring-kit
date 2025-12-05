@@ -404,9 +404,8 @@ form {
 }
 
 .crud-builder {
-    padding: 50px 60px 60px;
+    padding: 10px 0 0;
     background: #f7f9fc;
-    border-top: 2px solid #e6ecf5;
 }
 
 .crud-builder-header {
@@ -425,6 +424,19 @@ form {
 
 .crud-builder-header p {
     color: #7f8c8d;
+}
+
+.crud-builder-hint {
+    background: #eef5ff;
+    border: 1px solid #d2e3ff;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 360px;
+    font-size: 0.9em;
+    color: #3c4f6b;
 }
 
 .crud-layout {
@@ -554,6 +566,17 @@ form {
     color: #7f8c8d;
 }
 
+.crud-canvas-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85em;
+    color: #4f8ef7;
+    background: #f0f6ff;
+    padding: 8px 14px;
+    border-radius: 999px;
+}
+
 .crud-canvas-empty {
     flex: 1;
     border: 2px dashed #c5d8ff;
@@ -661,5 +684,43 @@ form {
 }
 
 small {
+    display: block;
+}
+.tab-container {
+    padding: 30px 60px 60px;
+}
+
+.tab-nav {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.tab-btn {
+    border: none;
+    background: #edf2fb;
+    color: #495057;
+    padding: 12px 24px;
+    border-radius: 999px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.2s ease;
+}
+
+.tab-btn.active {
+    background: #2c3e50;
+    color: #fff;
+    box-shadow: 0 12px 24px rgba(44, 62, 80, 0.25);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
     display: block;
 }

@@ -27,34 +27,22 @@ public class CrudScaffoldingService {
 
         String moduleDir = sanitizeModuleName(request.getModuleName());
         String basePackage = sanitizePackageName(request.getBasePackage());
+        request.setBasePackage(basePackage);
         String packagePath = basePackage.replace('.', '/');
 
         try (ZipOutputStream zos = new ZipOutputStream(baos)) {
-            for (CrudClassDefinition classDefinition : request.getClasses()) {
-                ProcessedClass processedClass = prepareClass(classDefinition);
-
-                String entityContent = buildEntity(basePackage, processedClass);
-                String dtoContent = buildDto(basePackage, processedClass);
-                String repositoryContent = buildRepository(basePackage, processedClass);
-                String serviceContent = buildService(basePackage, processedClass);
-                String controllerContent = buildController(basePackage, processedClass);
-
-                addFile(zos, moduleDir + "/src/main/java/" + packagePath + "/entity/" +
-                    processedClass.entityName + ".java", entityContent);
-                addFile(zos, moduleDir + "/src/main/java/" + packagePath + "/dto/" +
-                    processedClass.dtoName + ".java", dtoContent);
-                addFile(zos, moduleDir + "/src/main/java/" + packagePath + "/repository/" +
-                    processedClass.repositoryName + ".java", repositoryContent);
-                addFile(zos, moduleDir + "/src/main/java/" + packagePath + "/service/" +
-                    processedClass.serviceName + ".java", serviceContent);
-                addFile(zos, moduleDir + "/src/main/java/" + packagePath + "/controller/" +
-                    processedClass.controllerName + ".java", controllerContent);
-            }
-
+            writeCrudClasses(request, basePackage, moduleDir + "/src/main/java/" + packagePath + "/", zos);
             addFile(zos, moduleDir + "/README.md", buildReadme(request.getClasses(), basePackage));
         }
 
         return baos.toByteArray();
+    }
+
+    public void appendCrudToProject(CrudGenerationRequest request, String srcMainJavaBasePath,
+                                    String basePackage, ZipOutputStream zos) throws IOException {
+        String sanitizedPackage = sanitizePackageName(basePackage);
+        request.setBasePackage(sanitizedPackage);
+        writeCrudClasses(request, sanitizedPackage, srcMainJavaBasePath, zos);
     }
 
     private void addFile(ZipOutputStream zos, String path, String content) throws IOException {
@@ -62,6 +50,28 @@ public class CrudScaffoldingService {
         zos.putNextEntry(entry);
         zos.write(content.getBytes(StandardCharsets.UTF_8));
         zos.closeEntry();
+    }
+
+    private void writeCrudClasses(CrudGenerationRequest request, String basePackage,
+                                  String destinationBasePath, ZipOutputStream zos) throws IOException {
+        if (request.getClasses() == null) {
+            return;
+        }
+        for (CrudClassDefinition classDefinition : request.getClasses()) {
+            ProcessedClass processedClass = prepareClass(classDefinition);
+
+            String entityContent = buildEntity(basePackage, processedClass);
+            String dtoContent = buildDto(basePackage, processedClass);
+            String repositoryContent = buildRepository(basePackage, processedClass);
+            String serviceContent = buildService(basePackage, processedClass);
+            String controllerContent = buildController(basePackage, processedClass);
+
+            addFile(zos, destinationBasePath + "entity/" + processedClass.entityName + ".java", entityContent);
+            addFile(zos, destinationBasePath + "dto/" + processedClass.dtoName + ".java", dtoContent);
+            addFile(zos, destinationBasePath + "repository/" + processedClass.repositoryName + ".java", repositoryContent);
+            addFile(zos, destinationBasePath + "service/" + processedClass.serviceName + ".java", serviceContent);
+            addFile(zos, destinationBasePath + "controller/" + processedClass.controllerName + ".java", controllerContent);
+        }
     }
 
     private ProcessedClass prepareClass(CrudClassDefinition definition) {

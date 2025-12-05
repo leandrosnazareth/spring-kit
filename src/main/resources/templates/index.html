@@ -19,218 +19,238 @@
             </div>
         </div>
 
-        <div class="content">
-            <form th:action="@{/generate}" th:object="${projectRequest}" method="post" style="display: contents;">
-                
-                <!-- Left Panel: Configuration and Metadata -->
-                <div class="left-panel">
-                    <!-- Project Configuration -->
-                    <div class="form-section">
-                        <h2><i class="fa-solid fa-gear section-icon"></i> Project Configuration</h2>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Project Type</label>
-                            <div class="radio-group">
-                                <div class="radio-option">
-                                    <input type="radio" id="maven" th:field="*{projectType}" value="maven" checked>
-                                    <label for="maven">Maven</label>
-                                </div>
-                                <div class="radio-option">
-                                    <input type="radio" id="gradle" th:field="*{projectType}" value="gradle">
-                                    <label for="gradle">Gradle</label>
-                                </div>
-                            </div>
-                        </div>
+        <div class="tab-container">
+            <div class="tab-nav">
+                <button type="button" class="tab-btn active" data-tab="projectTab">
+                    <i class="fa-solid fa-seedling"></i> Projeto Spring Boot
+                </button>
+                <button type="button" class="tab-btn" data-tab="crudTab">
+                    <i class="fa-solid fa-diagram-project"></i> CRUD Builder (Opcional)
+                </button>
+            </div>
 
-                        <div class="form-group">
-                            <label>Language</label>
-                            <select th:field="*{language}">
-                                <option value="java">Java</option>
-                                <option value="kotlin">Kotlin</option>
-                                <option value="groovy">Groovy</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-row three-cols">
-                        <div class="form-group">
-                            <label for="javaVersion">Java Version (LTS)</label>
-                            <select id="javaVersion" th:field="*{javaVersion}" onchange="updateSpringVersions()">
-                                <option th:each="jv : ${javaVersions}" 
-                                        th:value="${jv.version}" 
-                                        th:text="${jv.label}">
-                                </option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="springBootVersion">Spring Boot Version</label>
-                            <select id="springBootVersion" th:field="*{springBootVersion}">
-                                <option value="3.2.5">3.2.5</option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Packaging</label>
-                            <select th:field="*{packaging}">
-                                <option value="jar">JAR</option>
-                                <option value="war">WAR</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Project Metadata -->
-                <div class="form-section">
-                    <h2><i class="fa-solid fa-folder-open section-icon"></i> Project Metadata</h2>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Group</label>
-                            <input type="text" id="groupId" th:field="*{groupId}" placeholder="com.example" 
-                                   pattern="^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$"
-                                   title="Must follow Java package naming (lowercase letters, numbers, underscores, dots)"
-                                   required
-                                   oninput="updatePackageName()">
-                            <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., com.example or org.mycompany</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label>Artifact</label>
-                            <input type="text" id="artifactId" th:field="*{artifactId}" placeholder="demo"
-                                   pattern="^[a-z][a-z0-9-]*$"
-                                   title="Must start with lowercase letter and contain only lowercase letters, numbers, and hyphens"
-                                   required
-                                   oninput="syncArtifactToName()">
-                            <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., my-app or demo-project</small>
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Name</label>
-                            <input type="text" id="name" th:field="*{name}" placeholder="demo"
-                                   pattern="^[a-zA-Z][a-zA-Z0-9]*$"
-                                   title="Must start with a letter and contain only letters and numbers (no spaces)"
-                                   required
-                                   oninput="updatePackageName()">
-                            <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., MyApp or DemoProject (used as class name)</small>
-                        </div>
-
-                        <div class="form-group">
-                            <label>
-                                Package Name
-                                <input type="checkbox" id="autoPackage" checked style="margin-left: 10px; width: auto;">
-                                <span style="font-weight: normal; font-size: 0.9em;">Auto-sync</span>
-                            </label>
-                            <input type="text" id="packageName" th:field="*{packageName}" placeholder="com.example.demo"
-                                   pattern="^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$"
-                                   title="Must follow Java package naming (lowercase letters, numbers, underscores, dots)"
-                                   required
-                                   oninput="disableAutoPackage()">
-                            <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., com.example.myapp</small>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Description</label>
-                        <textarea th:field="*{description}" rows="3" 
-                                  placeholder="Demo project for Spring Boot"></textarea>
-                    </div>
-                </div>
-
-                    <!-- Action Buttons -->
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-secondary" onclick="resetForm()">
-                            <i class="fa-solid fa-rotate-right"></i> Reset
-                        </button>
-                        <button type="submit" class="btn btn-primary" onclick="return validateForm()">
-                            <i class="fa-solid fa-download"></i> Generate Project
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Right Panel: Dependencies -->
-                <div class="right-panel">
-                    <div class="form-section" style="border-bottom: none; padding-bottom: 0;">
-                        <h2>
-                            <i class="fa-solid fa-cubes section-icon"></i> Dependencies
-                            <span id="depCounter" style="font-size: 0.8em; color: #7f8c8d; font-weight: normal; margin-left: 10px;">
-                                (0 selected)
-                            </span>
-                        </h2>
-                    
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label for="searchDeps">
-                                <i class="fa-solid fa-search"></i> Search Dependencies
-                            </label>
-                            <input type="text" id="searchDeps" placeholder="Type to filter dependencies..." 
-                                   onkeyup="filterDependencies()" style="width: 100%;">
-                        </div>
-                    
-                        <div class="dependencies-container">
-                            <div class="dependencies-grid">
-                                <div class="dependency-item" th:each="dep : ${dependencies}">
-                                    <label>
-                                        <input type="checkbox" 
-                                               th:field="*{dependencies}" 
-                                               th:value="${dep.id}">
-                                        <div class="dependency-info">
-                                            <div class="dependency-name" th:text="${dep.name}"></div>
-                                            <div class="dependency-desc" th:text="${dep.description}"></div>
+            <div class="tab-content active" id="projectTab">
+                <div class="content">
+                    <form th:action="@{/generate}" th:object="${projectRequest}" method="post" style="display: contents;">
+                        <input type="hidden" name="crudDefinition" id="crudDefinition">
+                        <!-- Left Panel: Configuration and Metadata -->
+                        <div class="left-panel">
+                            <!-- Project Configuration -->
+                            <div class="form-section">
+                                <h2><i class="fa-solid fa-gear section-icon"></i> Project Configuration</h2>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Project Type</label>
+                                    <div class="radio-group">
+                                        <div class="radio-option">
+                                            <input type="radio" id="maven" th:field="*{projectType}" value="maven" checked>
+                                            <label for="maven">Maven</label>
                                         </div>
-                                    </label>
+                                        <div class="radio-option">
+                                            <input type="radio" id="gradle" th:field="*{projectType}" value="gradle">
+                                            <label for="gradle">Gradle</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Language</label>
+                                    <select th:field="*{language}">
+                                        <option value="java">Java</option>
+                                        <option value="kotlin">Kotlin</option>
+                                        <option value="groovy">Groovy</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-row three-cols">
+                                <div class="form-group">
+                                    <label for="javaVersion">Java Version (LTS)</label>
+                                    <select id="javaVersion" th:field="*{javaVersion}" onchange="updateSpringVersions()">
+                                        <option th:each="jv : ${javaVersions}" 
+                                                th:value="${jv.version}" 
+                                                th:text="${jv.label}">
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="springBootVersion">Spring Boot Version</label>
+                                    <select id="springBootVersion" th:field="*{springBootVersion}">
+                                        <option value="3.2.5">3.2.5</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Packaging</label>
+                                    <select th:field="*{packaging}">
+                                        <option value="jar">JAR</option>
+                                        <option value="war">WAR</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
-                    </div>
+
+                        <!-- Project Metadata -->
+                        <div class="form-section">
+                            <h2><i class="fa-solid fa-folder-open section-icon"></i> Project Metadata</h2>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Group</label>
+                                    <input type="text" id="groupId" th:field="*{groupId}" placeholder="com.example" 
+                                           pattern="^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$"
+                                           title="Must follow Java package naming (lowercase letters, numbers, underscores, dots)"
+                                           required
+                                           oninput="updatePackageName()">
+                                    <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., com.example or org.mycompany</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>Artifact</label>
+                                    <input type="text" id="artifactId" th:field="*{artifactId}" placeholder="demo"
+                                           pattern="^[a-z][a-z0-9-]*$"
+                                           title="Must start with lowercase letter and contain only lowercase letters, numbers, and hyphens"
+                                           required
+                                           oninput="syncArtifactToName()">
+                                    <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., my-app or demo-project</small>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Name</label>
+                                    <input type="text" id="name" th:field="*{name}" placeholder="demo"
+                                           pattern="^[a-zA-Z][a-zA-Z0-9]*$"
+                                           title="Must start with a letter and contain only letters and numbers (no spaces)"
+                                           required
+                                           oninput="updatePackageName()">
+                                    <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., MyApp or DemoProject (used as class name)</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label>
+                                        Package Name
+                                        <input type="checkbox" id="autoPackage" checked style="margin-left: 10px; width: auto;">
+                                        <span style="font-weight: normal; font-size: 0.9em;">Auto-sync</span>
+                                    </label>
+                                    <input type="text" id="packageName" th:field="*{packageName}" placeholder="com.example.demo"
+                                           pattern="^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$"
+                                           title="Must follow Java package naming (lowercase letters, numbers, underscores, dots)"
+                                           required
+                                           oninput="disableAutoPackage()">
+                                    <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., com.example.myapp</small>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Description</label>
+                                <textarea th:field="*{description}" rows="3" 
+                                          placeholder="Demo project for Spring Boot"></textarea>
+                            </div>
+                        </div>
+
+                            <!-- Action Buttons -->
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-secondary" onclick="resetForm()">
+                                    <i class="fa-solid fa-rotate-right"></i> Reset
+                                </button>
+                                <button type="submit" class="btn btn-primary" onclick="return validateForm()">
+                                    <i class="fa-solid fa-download"></i> Generate Project
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Right Panel: Dependencies -->
+                        <div class="right-panel">
+                            <div class="form-section" style="border-bottom: none; padding-bottom: 0;">
+                                <h2>
+                                    <i class="fa-solid fa-cubes section-icon"></i> Dependencies
+                                    <span id="depCounter" style="font-size: 0.8em; color: #7f8c8d; font-weight: normal; margin-left: 10px;">
+                                        (0 selected)
+                                    </span>
+                                </h2>
+                            
+                                <div class="form-group" style="margin-bottom: 20px;">
+                                    <label for="searchDeps">
+                                        <i class="fa-solid fa-search"></i> Search Dependencies
+                                    </label>
+                                    <input type="text" id="searchDeps" placeholder="Type to filter dependencies..." 
+                                           onkeyup="filterDependencies()" style="width: 100%;">
+                                </div>
+                            
+                                <div class="dependencies-container">
+                                    <div class="dependencies-grid">
+                                        <div class="dependency-item" th:each="dep : ${dependencies}">
+                                            <label>
+                                                <input type="checkbox" 
+                                                       th:field="*{dependencies}" 
+                                                       th:value="${dep.id}">
+                                                <div class="dependency-info">
+                                                    <div class="dependency-name" th:text="${dep.name}"></div>
+                                                    <div class="dependency-desc" th:text="${dep.description}"></div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
                 </div>
-            </form>
+            </div>
+
+            <div class="tab-content" id="crudTab">
+                <section class="crud-builder">
+                    <div class="crud-builder-header">
+                        <div>
+                            <h2><i class="fa-solid fa-diagram-project"></i> CRUD Code Generator</h2>
+                            <p>Desenhe suas entidades visualmente, organize atributos e elas serão incluídas automaticamente no projeto Spring ao gerar o download.</p>
+                        </div>
+                        <div class="crud-builder-hint">
+                            <i class="fa-solid fa-circle-info"></i>
+                            <span>Classes serão adicionadas em <strong>Entity, DTO, Repository, Service</strong> e <strong>Controller</strong> no package configurado.</span>
+                        </div>
+                    </div>
+
+                    <div class="crud-layout">
+                        <div class="crud-sidebar">
+                            <div class="crud-sidebar-header">
+                                <div>
+                                    <h3>Classes</h3>
+                                    <p>Adicione múltiplas entidades e defina atributos.</p>
+                                </div>
+                                <button type="button" class="btn btn-secondary btn-compact" id="addCrudClassBtn">
+                                    <i class="fa-solid fa-plus"></i> Nova Classe
+                                </button>
+                            </div>
+                            <div id="crudClassList" class="crud-class-list"></div>
+                            <div id="crudClassDetail" class="crud-class-detail">
+                                <p>Selecione uma classe para editar nome, tabela e atributos. Arraste o card correspondente no canvas ao lado.</p>
+                            </div>
+                        </div>
+
+                        <div class="crud-canvas-panel">
+                            <div class="crud-canvas-toolbar">
+                                <div>
+                                    <strong>Canvas UML</strong>
+                                    <p>Arraste os cards para organizar visualmente.</p>
+                                </div>
+                                <div class="crud-canvas-hint">
+                                    <i class="fa-solid fa-layer-group"></i>
+                                    <span>As entidades deste canvas serão compiladas junto ao projeto principal.</span>
+                                </div>
+                            </div>
+                            <div id="crudCanvasEmpty" class="crud-canvas-empty">
+                                Clique em "Nova Classe" para começar a desenhar seu diagrama.
+                            </div>
+                            <div id="umlCanvas" class="uml-canvas"></div>
+                        </div>
+                    </div>
+                </section>
+            </div>
         </div>
-
-        <section class="crud-builder">
-            <div class="crud-builder-header">
-                <div>
-                    <h2><i class="fa-solid fa-diagram-project"></i> CRUD Code Generator</h2>
-                    <p>Desenhe suas entidades visualmente, organize atributos e gere automaticamente Entity, DTO, Repository, Service e Controller usando os dados do projeto configurado acima.</p>
-                </div>
-            </div>
-
-            <div class="crud-layout">
-                <div class="crud-sidebar">
-                    <div class="crud-sidebar-header">
-                        <div>
-                            <h3>Classes</h3>
-                            <p>Adicione múltiplas entidades e defina atributos.</p>
-                        </div>
-                        <button type="button" class="btn btn-secondary btn-compact" id="addCrudClassBtn">
-                            <i class="fa-solid fa-plus"></i> Nova Classe
-                        </button>
-                    </div>
-                    <div id="crudClassList" class="crud-class-list"></div>
-                    <div id="crudClassDetail" class="crud-class-detail">
-                        <p>Selecione uma classe para editar nome, tabela e atributos. Arraste o card correspondente no canvas ao lado.</p>
-                    </div>
-                </div>
-
-                <div class="crud-canvas-panel">
-                    <div class="crud-canvas-toolbar">
-                        <div>
-                            <strong>Canvas UML</strong>
-                            <p>Arraste os cards para organizar visualmente.</p>
-                        </div>
-                        <button type="button" class="btn btn-primary btn-compact" id="generateCrudBtn">
-                            <i class="fa-solid fa-code"></i> Gerar CRUD Module
-                        </button>
-                    </div>
-                    <div id="crudCanvasEmpty" class="crud-canvas-empty">
-                        Clique em "Nova Classe" para começar a desenhar seu diagrama.
-                    </div>
-                    <div id="umlCanvas" class="uml-canvas"></div>
-                </div>
-            </div>
-        </section>
     </div>
 
     <script th:src="@{/js/main.js}"></script>

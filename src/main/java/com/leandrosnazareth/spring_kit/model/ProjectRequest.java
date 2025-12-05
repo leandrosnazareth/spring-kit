@@ -39,4 +39,6 @@ public class ProjectRequest {
     private String packaging = "jar";
     
     private List<String> dependencies = new ArrayList<>();
+
+    private String crudDefinition;
 }

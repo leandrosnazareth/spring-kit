@@ -89,6 +89,9 @@ function validateForm() {
             return false;
         }
     }
+    if (!prepareCrudDefinition()) {
+        return false;
+    }
     return true;
 }
 
@@ -169,9 +172,23 @@ function updateDependencyCounter() {
     if (el) el.textContent = `(${checkedCount} selected)`;
 }
 
+function prepareCrudDefinition() {
+    const hidden = document.getElementById('crudDefinition');
+    if (!hidden) return true;
+    if (!crudState.classes.length) {
+        hidden.value = '';
+        return true;
+    }
+    const payload = buildCrudPayload();
+    if (!payload) {
+        return false;
+    }
+    hidden.value = JSON.stringify(payload);
+    return true;
+}
+
 function initCrudBuilder() {
     document.getElementById('addCrudClassBtn')?.addEventListener('click', addCrudClass);
-    document.getElementById('generateCrudBtn')?.addEventListener('click', generateCrudModule);
 
     renderCrudClassList();
     renderCrudClassDetail();
@@ -182,6 +199,8 @@ function initCrudBuilder() {
 function resetCrudBuilder() {
     crudState.classes = [];
     crudState.selectedClassId = null;
+    const hidden = document.getElementById('crudDefinition');
+    if (hidden) hidden.value = '';
     renderCrudClassList();
     renderCrudClassDetail();
     renderCrudCanvas();
@@ -610,38 +629,6 @@ function buildCrudPayload() {
     };
 }
 
-async function generateCrudModule() {
-    const payload = buildCrudPayload();
-    if (!payload) return;
-    const button = document.getElementById('generateCrudBtn');
-    if (button) button.disabled = true;
-    try {
-        const response = await fetch('/crud/generate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
-        if (!response.ok) {
-            throw new Error('Erro ao gerar módulo');
-        }
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${payload.moduleName}-crud.zip`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-    } catch (error) {
-        alert('Não foi possível gerar o CRUD module. Verifique os dados e tente novamente.');
-    } finally {
-        if (button) button.disabled = false;
-    }
-}
-
 function toPascalCase(value) {
     if (!value) return '';
     return value
@@ -665,11 +652,26 @@ function crudRandomId(prefix) {
     return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function initTabs() {
+    const buttons = document.querySelectorAll('.tab-btn');
+    const contents = document.querySelectorAll('.tab-content');
+    buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = btn.dataset.tab;
+            buttons.forEach(b => b.classList.toggle('active', b === btn));
+            contents.forEach(content => {
+                content.classList.toggle('active', content.id === target);
+            });
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     updateSpringVersions();
     updatePackageName();
     updateDependencyCounter();
     initCrudBuilder();
+    initTabs();
 
     document.addEventListener('change', function(e) {
         if (e.target && e.target.matches('.dependencies-container input[type="checkbox"]')) {
