@@ -188,6 +188,49 @@
                 </div>
             </form>
         </div>
+
+        <section class="crud-builder">
+            <div class="crud-builder-header">
+                <div>
+                    <h2><i class="fa-solid fa-diagram-project"></i> CRUD Code Generator</h2>
+                    <p>Desenhe suas entidades visualmente, organize atributos e gere automaticamente Entity, DTO, Repository, Service e Controller usando os dados do projeto configurado acima.</p>
+                </div>
+            </div>
+
+            <div class="crud-layout">
+                <div class="crud-sidebar">
+                    <div class="crud-sidebar-header">
+                        <div>
+                            <h3>Classes</h3>
+                            <p>Adicione múltiplas entidades e defina atributos.</p>
+                        </div>
+                        <button type="button" class="btn btn-secondary btn-compact" id="addCrudClassBtn">
+                            <i class="fa-solid fa-plus"></i> Nova Classe
+                        </button>
+                    </div>
+                    <div id="crudClassList" class="crud-class-list"></div>
+                    <div id="crudClassDetail" class="crud-class-detail">
+                        <p>Selecione uma classe para editar nome, tabela e atributos. Arraste o card correspondente no canvas ao lado.</p>
+                    </div>
+                </div>
+
+                <div class="crud-canvas-panel">
+                    <div class="crud-canvas-toolbar">
+                        <div>
+                            <strong>Canvas UML</strong>
+                            <p>Arraste os cards para organizar visualmente.</p>
+                        </div>
+                        <button type="button" class="btn btn-primary btn-compact" id="generateCrudBtn">
+                            <i class="fa-solid fa-code"></i> Gerar CRUD Module
+                        </button>
+                    </div>
+                    <div id="crudCanvasEmpty" class="crud-canvas-empty">
+                        Clique em "Nova Classe" para começar a desenhar seu diagrama.
+                    </div>
+                    <div id="umlCanvas" class="uml-canvas"></div>
+                </div>
+            </div>
+        </section>
     </div>
 
     <script th:src="@{/js/main.js}"></script>
