@@ -289,7 +289,7 @@
             border-radius: 4px;
             padding: 12px 15px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s ease;
         }
 
         .dependency-item:hover {
@@ -301,6 +301,7 @@
         .dependency-item.selected {
             border-color: #2c3e50;
             background: #ecf0f1;
+            order: -1;
         }
 
         .dependency-item input[type="checkbox"] {
@@ -741,8 +742,10 @@
             checkbox.addEventListener('change', function() {
                 if (this.checked) {
                     item.classList.add('selected');
+                    moveToTop(item);
                 } else {
                     item.classList.remove('selected');
+                    restoreOriginalPosition(item);
                 }
                 updateDependencyCounter();
             });
@@ -752,6 +755,49 @@
                 item.classList.add('selected');
             }
         });
+        
+        function moveToTop(item) {
+            const grid = item.parentElement;
+            const firstItem = grid.firstElementChild;
+            
+            // Store original position
+            if (!item.dataset.originalIndex) {
+                const items = Array.from(grid.children);
+                item.dataset.originalIndex = items.indexOf(item);
+            }
+            
+            // Move to top
+            grid.insertBefore(item, firstItem);
+        }
+        
+        function restoreOriginalPosition(item) {
+            const grid = item.parentElement;
+            const originalIndex = parseInt(item.dataset.originalIndex);
+            
+            if (isNaN(originalIndex)) return;
+            
+            const items = Array.from(grid.children);
+            
+            // Find the correct position considering other selected items
+            let targetIndex = originalIndex;
+            let insertBeforeElement = null;
+            
+            for (let i = 0; i < items.length; i++) {
+                const currentItem = items[i];
+                const currentOriginalIndex = parseInt(currentItem.dataset.originalIndex);
+                
+                if (!isNaN(currentOriginalIndex) && currentOriginalIndex > originalIndex) {
+                    insertBeforeElement = currentItem;
+                    break;
+                }
+            }
+            
+            if (insertBeforeElement) {
+                grid.insertBefore(item, insertBeforeElement);
+            } else {
+                grid.appendChild(item);
+            }
+        }
         
         function updateDependencyCounter() {
             const checkedCount = document.querySelectorAll('.dependency-item input[type="checkbox"]:checked').length;
