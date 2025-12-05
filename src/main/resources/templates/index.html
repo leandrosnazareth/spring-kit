@@ -356,6 +356,14 @@
                 <div class="form-section">
                     <h2><i class="fa-solid fa-cubes section-icon"></i> Dependencies</h2>
                     
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label for="searchDeps">
+                            <i class="fa-solid fa-search"></i> Search Dependencies
+                        </label>
+                        <input type="text" id="searchDeps" placeholder="Type to filter dependencies..." 
+                               onkeyup="filterDependencies()" style="width: 100%;">
+                    </div>
+                    
                     <div class="dependencies-grid">
                         <div class="dependency-item" th:each="dep : ${dependencies}">
                             <label>
@@ -385,6 +393,22 @@
     </div>
 
     <script>
+        function filterDependencies() {
+            const searchInput = document.getElementById('searchDeps').value.toLowerCase();
+            const dependencyItems = document.querySelectorAll('.dependency-item');
+            
+            dependencyItems.forEach(item => {
+                const name = item.querySelector('.dependency-name').textContent.toLowerCase();
+                const desc = item.querySelector('.dependency-desc').textContent.toLowerCase();
+                
+                if (name.includes(searchInput) || desc.includes(searchInput)) {
+                    item.style.display = '';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
         function updateSpringVersions() {
             const javaVersion = document.getElementById('javaVersion').value;
             const springVersionSelect = document.getElementById('springBootVersion');
