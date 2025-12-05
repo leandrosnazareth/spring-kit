@@ -16,15 +16,15 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #f5f5f5;
             min-height: 100vh;
-            padding: 20px;
+            padding: 0;
+            margin: 0;
         }
 
         .container {
-            max-width: 1200px;
-            margin: 0 auto;
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
             background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             overflow: hidden;
         }
 
@@ -59,7 +59,127 @@
 
 
         .content {
-            padding: 40px;
+            padding: 0;
+            display: flex;
+            flex-direction: row;
+            min-height: calc(100vh - 106px);
+        }
+
+        form {
+            display: contents;
+        }
+
+        .left-panel {
+            flex: 1;
+            padding: 40px 60px;
+            overflow-y: auto;
+            max-height: calc(100vh - 106px);
+        }
+
+        .right-panel {
+            width: 650px;
+            flex-shrink: 0;
+            padding: 40px 30px;
+            background: #fafafa;
+            border-left: 2px solid #e0e0e0;
+            overflow-y: auto;
+            max-height: calc(100vh - 106px);
+        }
+
+        .right-panel::-webkit-scrollbar,
+        .left-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .right-panel::-webkit-scrollbar-track,
+        .left-panel::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .right-panel::-webkit-scrollbar-thumb,
+        .left-panel::-webkit-scrollbar-thumb {
+            background: #bdc3c7;
+            border-radius: 4px;
+        }
+
+        .right-panel::-webkit-scrollbar-thumb:hover,
+        .left-panel::-webkit-scrollbar-thumb:hover {
+            background: #95a5a6;
+        }
+
+        @media (max-width: 1400px) {
+            .right-panel {
+                width: 600px;
+            }
+            
+            .left-panel {
+                padding: 40px;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            .right-panel {
+                width: 550px;
+            }
+            
+            .left-panel {
+                padding: 30px;
+            }
+            
+            .right-panel {
+                padding: 30px 20px;
+            }
+            
+            .dependencies-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 1024px) {
+            .content {
+                flex-direction: column;
+            }
+
+            .right-panel {
+                width: 100%;
+                border-left: none;
+                border-top: 2px solid #e0e0e0;
+            }
+
+            .left-panel, .right-panel {
+                max-height: none;
+                padding: 30px;
+            }
+            
+            .dependencies-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .left-panel, .right-panel {
+                padding: 20px;
+            }
+
+            .header {
+                padding: 20px;
+            }
+
+            .header-icon {
+                font-size: 2em !important;
+            }
+
+            .header-text h1 {
+                font-size: 1.5em !important;
+            }
+
+            .header-text p {
+                font-size: 0.85em !important;
+            }
+            
+            .dependencies-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         .form-section {
@@ -89,9 +209,28 @@
 
         .form-row {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 20px;
             margin-bottom: 20px;
+        }
+
+        @media (min-width: 768px) {
+            .form-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (min-width: 1200px) {
+            .form-row.three-cols {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 767px) {
+            .form-row {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
         }
 
         .form-group {
@@ -126,36 +265,21 @@
         }
 
         .dependencies-container {
-            max-height: 500px;
-            overflow-y: auto;
-            padding-right: 10px;
-            border: 1px solid #e0e0e0;
-            border-radius: 4px;
-            padding: 15px;
-            background: #fafafa;
+            max-height: none;
+            overflow-y: visible;
+            padding-right: 0;
+            border: none;
+            padding: 0;
+            background: transparent;
         }
 
         .dependencies-container::-webkit-scrollbar {
-            width: 10px;
-        }
-
-        .dependencies-container::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 4px;
-        }
-
-        .dependencies-container::-webkit-scrollbar-thumb {
-            background: #bdc3c7;
-            border-radius: 4px;
-        }
-
-        .dependencies-container::-webkit-scrollbar-thumb:hover {
-            background: #95a5a6;
+            width: 0;
         }
 
         .dependencies-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            grid-template-columns: repeat(2, 1fr);
             gap: 12px;
         }
 
@@ -302,11 +426,13 @@
         </div>
 
         <div class="content">
-            <form th:action="@{/generate}" th:object="${projectRequest}" method="post">
+            <form th:action="@{/generate}" th:object="${projectRequest}" method="post" style="display: contents;">
                 
-                <!-- Project Configuration -->
-                <div class="form-section">
-                    <h2><i class="fa-solid fa-gear section-icon"></i> Project Configuration</h2>
+                <!-- Left Panel: Configuration and Metadata -->
+                <div class="left-panel">
+                    <!-- Project Configuration -->
+                    <div class="form-section">
+                        <h2><i class="fa-solid fa-gear section-icon"></i> Project Configuration</h2>
                     
                     <div class="form-row">
                         <div class="form-group">
@@ -333,7 +459,7 @@
                         </div>
                     </div>
 
-                    <div class="form-row">
+                    <div class="form-row three-cols">
                         <div class="form-group">
                             <label for="javaVersion">Java Version (LTS)</label>
                             <select id="javaVersion" th:field="*{javaVersion}" onchange="updateSpringVersions()">
@@ -420,48 +546,51 @@
                     </div>
                 </div>
 
-                <!-- Dependencies -->
-                <div class="form-section">
-                    <h2>
-                        <i class="fa-solid fa-cubes section-icon"></i> Dependencies
-                        <span id="depCounter" style="font-size: 0.8em; color: #7f8c8d; font-weight: normal; margin-left: 10px;">
-                            (0 selected)
-                        </span>
-                    </h2>
-                    
-                    <div class="form-group" style="margin-bottom: 20px;">
-                        <label for="searchDeps">
-                            <i class="fa-solid fa-search"></i> Search Dependencies
-                        </label>
-                        <input type="text" id="searchDeps" placeholder="Type to filter dependencies..." 
-                               onkeyup="filterDependencies()" style="width: 100%;">
-                    </div>
-                    
-                    <div class="dependencies-container">
-                        <div class="dependencies-grid">
-                            <div class="dependency-item" th:each="dep : ${dependencies}">
-                                <label>
-                                    <input type="checkbox" 
-                                           th:field="*{dependencies}" 
-                                           th:value="${dep.id}">
-                                    <div class="dependency-info">
-                                        <div class="dependency-name" th:text="${dep.name}"></div>
-                                        <div class="dependency-desc" th:text="${dep.description}"></div>
-                                    </div>
-                                </label>
-                            </div>
-                        </div>
+                    <!-- Action Buttons -->
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-secondary" onclick="resetForm()">
+                            <i class="fa-solid fa-rotate-right"></i> Reset
+                        </button>
+                        <button type="submit" class="btn btn-primary" onclick="return validateForm()">
+                            <i class="fa-solid fa-download"></i> Generate Project
+                        </button>
                     </div>
                 </div>
 
-                <!-- Action Buttons -->
-                <div class="btn-group">
-                    <button type="button" class="btn btn-secondary" onclick="resetForm()">
-                        <i class="fa-solid fa-rotate-right"></i> Reset
-                    </button>
-                    <button type="submit" class="btn btn-primary" onclick="return validateForm()">
-                        <i class="fa-solid fa-download"></i> Generate Project
-                    </button>
+                <!-- Right Panel: Dependencies -->
+                <div class="right-panel">
+                    <div class="form-section" style="border-bottom: none; padding-bottom: 0;">
+                        <h2>
+                            <i class="fa-solid fa-cubes section-icon"></i> Dependencies
+                            <span id="depCounter" style="font-size: 0.8em; color: #7f8c8d; font-weight: normal; margin-left: 10px;">
+                                (0 selected)
+                            </span>
+                        </h2>
+                    
+                        <div class="form-group" style="margin-bottom: 20px;">
+                            <label for="searchDeps">
+                                <i class="fa-solid fa-search"></i> Search Dependencies
+                            </label>
+                            <input type="text" id="searchDeps" placeholder="Type to filter dependencies..." 
+                                   onkeyup="filterDependencies()" style="width: 100%;">
+                        </div>
+                    
+                        <div class="dependencies-container">
+                            <div class="dependencies-grid">
+                                <div class="dependency-item" th:each="dep : ${dependencies}">
+                                    <label>
+                                        <input type="checkbox" 
+                                               th:field="*{dependencies}" 
+                                               th:value="${dep.id}">
+                                        <div class="dependency-info">
+                                            <div class="dependency-name" th:text="${dep.name}"></div>
+                                            <div class="dependency-desc" th:text="${dep.description}"></div>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </form>
         </div>
