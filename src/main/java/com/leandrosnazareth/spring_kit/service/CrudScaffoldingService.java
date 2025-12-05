@@ -1,17 +1,25 @@
 package com.leandrosnazareth.spring_kit.service;
 
-import com.leandrosnazareth.spring_kit.model.CrudClassDefinition;
-import com.leandrosnazareth.spring_kit.model.CrudFieldDefinition;
-import com.leandrosnazareth.spring_kit.model.CrudGenerationRequest;
-import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+import com.leandrosnazareth.spring_kit.model.CrudClassDefinition;
+import com.leandrosnazareth.spring_kit.model.CrudFieldDefinition;
+import com.leandrosnazareth.spring_kit.model.CrudGenerationRequest;
 
 @Service
 public class CrudScaffoldingService {
@@ -65,6 +73,7 @@ public class CrudScaffoldingService {
             return;
         }
         boolean thymeleafViews = request.isThymeleafViews();
+        boolean useLombok = request.isUseLombok();
         String normalizedTemplatePath = destinationTemplatesPath;
         if (normalizedTemplatePath != null && !normalizedTemplatePath.endsWith("/")) {
             normalizedTemplatePath = normalizedTemplatePath + "/";
@@ -72,8 +81,8 @@ public class CrudScaffoldingService {
         for (CrudClassDefinition classDefinition : request.getClasses()) {
             ProcessedClass processedClass = prepareClass(classDefinition);
 
-            String entityContent = buildEntity(basePackage, processedClass);
-            String dtoContent = buildDto(basePackage, processedClass);
+            String entityContent = buildEntity(basePackage, processedClass, useLombok);
+            String dtoContent = buildDto(basePackage, processedClass, useLombok);
             String repositoryContent = buildRepository(basePackage, processedClass);
             String serviceContent = buildService(basePackage, processedClass);
             String controllerContent = thymeleafViews
@@ -156,18 +165,24 @@ public class CrudScaffoldingService {
         return new ProcessedField(fieldName, type, identifier, field.isRequired(), field.isUnique());
     }
 
-    private String buildEntity(String basePackage, ProcessedClass processedClass) {
+    private String buildEntity(String basePackage, ProcessedClass processedClass, boolean useLombok) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".entity;\n\n");
         sb.append("import jakarta.persistence.*;\n");
         Set<String> imports = resolveFieldImports(processedClass.fields());
-        imports.forEach(i -> sb.append("import ").append(i).append(";\n"));
-        if (!imports.isEmpty()) {
-            sb.append("\n");
-        } else {
-            sb.append("\n");
+        if (useLombok) {
+            sb.append("import lombok.AllArgsConstructor;\n");
+            sb.append("import lombok.Data;\n");
+            sb.append("import lombok.NoArgsConstructor;\n");
         }
+        imports.forEach(i -> sb.append("import ").append(i).append(";\n"));
+        sb.append("\n");
 
+        if (useLombok) {
+            sb.append("@Data\n");
+            sb.append("@NoArgsConstructor\n");
+            sb.append("@AllArgsConstructor\n");
+        }
         sb.append("@Entity\n");
         sb.append("@Table(name = \"").append(processedClass.tableName()).append("\")\n");
         sb.append("public class ").append(processedClass.entityName()).append(" {\n\n");
@@ -185,28 +200,32 @@ public class CrudScaffoldingService {
             sb.append("    private ").append(field.type()).append(" ").append(field.name()).append(";\n\n");
         }
 
-        for (ProcessedField field : processedClass.fields()) {
-            String capitalized = StringUtils.capitalize(field.name());
-            sb.append("    public ").append(field.type()).append(" get").append(capitalized).append("() {\n");
-            sb.append("        return ").append(field.name()).append(";\n");
-            sb.append("    }\n\n");
-            sb.append("    public void set").append(capitalized).append("(").append(field.type())
-                .append(" ").append(field.name()).append(") {\n");
-            sb.append("        this.").append(field.name()).append(" = ").append(field.name()).append(";\n");
-            sb.append("    }\n\n");
+        if (!useLombok) {
+            appendConstructors(sb, processedClass.entityName(), processedClass.fields());
+            appendGettersAndSetters(sb, processedClass.fields());
         }
 
         sb.append("}\n");
         return sb.toString();
     }
 
-    private String buildDto(String basePackage, ProcessedClass processedClass) {
+    private String buildDto(String basePackage, ProcessedClass processedClass, boolean useLombok) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".dto;\n\n");
         Set<String> imports = resolveFieldImports(processedClass.fields());
+        if (useLombok) {
+            sb.append("import lombok.AllArgsConstructor;\n");
+            sb.append("import lombok.Data;\n");
+            sb.append("import lombok.NoArgsConstructor;\n");
+        }
         imports.forEach(i -> sb.append("import ").append(i).append(";\n"));
-        if (!imports.isEmpty()) {
+        if (!imports.isEmpty() || useLombok) {
             sb.append("\n");
+        }
+        if (useLombok) {
+            sb.append("@Data\n");
+            sb.append("@NoArgsConstructor\n");
+            sb.append("@AllArgsConstructor\n");
         }
         sb.append("public class ").append(processedClass.dtoName()).append(" {\n\n");
 
@@ -215,15 +234,9 @@ public class CrudScaffoldingService {
         }
         sb.append("\n");
 
-        for (ProcessedField field : processedClass.fields()) {
-            String capitalized = StringUtils.capitalize(field.name());
-            sb.append("    public ").append(field.type()).append(" get").append(capitalized).append("() {\n");
-            sb.append("        return ").append(field.name()).append(";\n");
-            sb.append("    }\n\n");
-            sb.append("    public void set").append(capitalized).append("(").append(field.type())
-                .append(" ").append(field.name()).append(") {\n");
-            sb.append("        this.").append(field.name()).append(" = ").append(field.name()).append(";\n");
-            sb.append("    }\n\n");
+        if (!useLombok) {
+            appendConstructors(sb, processedClass.dtoName(), processedClass.fields());
+            appendGettersAndSetters(sb, processedClass.fields());
         }
 
         sb.append("}\n");
@@ -642,6 +655,37 @@ public class CrudScaffoldingService {
             kebab = kebab + "s";
         }
         return kebab;
+    }
+
+    private void appendConstructors(StringBuilder sb, String className, List<ProcessedField> fields) {
+        sb.append("    public ").append(className).append("() {\n");
+        sb.append("    }\n\n");
+        sb.append("    public ").append(className).append("(");
+        for (int i = 0; i < fields.size(); i++) {
+            ProcessedField field = fields.get(i);
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(field.type()).append(" ").append(field.name());
+        }
+        sb.append(") {\n");
+        for (ProcessedField field : fields) {
+            sb.append("        this.").append(field.name()).append(" = ").append(field.name()).append(";\n");
+        }
+        sb.append("    }\n\n");
+    }
+
+    private void appendGettersAndSetters(StringBuilder sb, List<ProcessedField> fields) {
+        for (ProcessedField field : fields) {
+            String capitalized = StringUtils.capitalize(field.name());
+            sb.append("    public ").append(field.type()).append(" get").append(capitalized).append("() {\n");
+            sb.append("        return ").append(field.name()).append(";\n");
+            sb.append("    }\n\n");
+            sb.append("    public void set").append(capitalized).append("(").append(field.type())
+                .append(" ").append(field.name()).append(") {\n");
+            sb.append("        this.").append(field.name()).append(" = ").append(field.name()).append(";\n");
+            sb.append("    }\n\n");
+        }
     }
 
     private String normalizeType(String type) {

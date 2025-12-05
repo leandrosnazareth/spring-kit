@@ -22,4 +22,6 @@ public class CrudGenerationRequest {
     private List<CrudClassDefinition> classes = new ArrayList<>();
 
     private boolean thymeleafViews;
+
+    private boolean useLombok;
 }

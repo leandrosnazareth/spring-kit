@@ -86,6 +86,7 @@ public class ProjectGeneratorService {
         crudRequest.setBasePackage(request.getPackageName());
         crudRequest.setModuleName(request.getArtifactId() + "-crud");
         crudRequest.setThymeleafViews(hasDependency(request, "thymeleaf"));
+        crudRequest.setUseLombok(hasDependency(request, "lombok"));
         crudScaffoldingService.appendCrudToProject(crudRequest, srcMainJava, templatesBasePath, request.getPackageName(), zos);
     }
 
