@@ -31,18 +31,24 @@ public class CrudScaffoldingService {
         String packagePath = basePackage.replace('.', '/');
 
         try (ZipOutputStream zos = new ZipOutputStream(baos)) {
-            writeCrudClasses(request, basePackage, moduleDir + "/src/main/java/" + packagePath + "/", zos);
-            addFile(zos, moduleDir + "/README.md", buildReadme(request.getClasses(), basePackage));
+            writeCrudArtifacts(
+                request,
+                basePackage,
+                moduleDir + "/src/main/java/" + packagePath + "/",
+                moduleDir + "/src/main/resources/templates/",
+                zos
+            );
+            addFile(zos, moduleDir + "/README.md", buildReadme(request, basePackage));
         }
 
         return baos.toByteArray();
     }
 
     public void appendCrudToProject(CrudGenerationRequest request, String srcMainJavaBasePath,
-                                    String basePackage, ZipOutputStream zos) throws IOException {
+                                    String templatesBasePath, String basePackage, ZipOutputStream zos) throws IOException {
         String sanitizedPackage = sanitizePackageName(basePackage);
         request.setBasePackage(sanitizedPackage);
-        writeCrudClasses(request, sanitizedPackage, srcMainJavaBasePath, zos);
+        writeCrudArtifacts(request, sanitizedPackage, srcMainJavaBasePath, templatesBasePath, zos);
     }
 
     private void addFile(ZipOutputStream zos, String path, String content) throws IOException {
@@ -52,10 +58,16 @@ public class CrudScaffoldingService {
         zos.closeEntry();
     }
 
-    private void writeCrudClasses(CrudGenerationRequest request, String basePackage,
-                                  String destinationBasePath, ZipOutputStream zos) throws IOException {
+    private void writeCrudArtifacts(CrudGenerationRequest request, String basePackage,
+                                    String destinationJavaBasePath, String destinationTemplatesPath,
+                                    ZipOutputStream zos) throws IOException {
         if (request.getClasses() == null) {
             return;
+        }
+        boolean thymeleafViews = request.isThymeleafViews();
+        String normalizedTemplatePath = destinationTemplatesPath;
+        if (normalizedTemplatePath != null && !normalizedTemplatePath.endsWith("/")) {
+            normalizedTemplatePath = normalizedTemplatePath + "/";
         }
         for (CrudClassDefinition classDefinition : request.getClasses()) {
             ProcessedClass processedClass = prepareClass(classDefinition);
@@ -64,13 +76,22 @@ public class CrudScaffoldingService {
             String dtoContent = buildDto(basePackage, processedClass);
             String repositoryContent = buildRepository(basePackage, processedClass);
             String serviceContent = buildService(basePackage, processedClass);
-            String controllerContent = buildController(basePackage, processedClass);
+            String controllerContent = thymeleafViews
+                ? buildMvcController(basePackage, processedClass)
+                : buildRestController(basePackage, processedClass);
 
-            addFile(zos, destinationBasePath + "entity/" + processedClass.entityName + ".java", entityContent);
-            addFile(zos, destinationBasePath + "dto/" + processedClass.dtoName + ".java", dtoContent);
-            addFile(zos, destinationBasePath + "repository/" + processedClass.repositoryName + ".java", repositoryContent);
-            addFile(zos, destinationBasePath + "service/" + processedClass.serviceName + ".java", serviceContent);
-            addFile(zos, destinationBasePath + "controller/" + processedClass.controllerName + ".java", controllerContent);
+            addFile(zos, destinationJavaBasePath + "entity/" + processedClass.entityName + ".java", entityContent);
+            addFile(zos, destinationJavaBasePath + "dto/" + processedClass.dtoName + ".java", dtoContent);
+            addFile(zos, destinationJavaBasePath + "repository/" + processedClass.repositoryName + ".java", repositoryContent);
+            addFile(zos, destinationJavaBasePath + "service/" + processedClass.serviceName + ".java", serviceContent);
+            addFile(zos, destinationJavaBasePath + "controller/" + processedClass.controllerName + ".java", controllerContent);
+
+            if (thymeleafViews && normalizedTemplatePath != null) {
+                String folder = buildControllerPath(processedClass.entityName());
+                String baseTemplateDir = normalizedTemplatePath + folder + "/";
+                addFile(zos, baseTemplateDir + "list.html", buildListTemplate(processedClass, folder));
+                addFile(zos, baseTemplateDir + "form.html", buildFormTemplate(processedClass, folder));
+            }
         }
     }
 
@@ -323,7 +344,7 @@ public class CrudScaffoldingService {
         return sb.toString();
     }
 
-    private String buildController(String basePackage, ProcessedClass processedClass) {
+    private String buildRestController(String basePackage, ProcessedClass processedClass) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".controller;\n\n");
         sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
@@ -376,6 +397,157 @@ public class CrudScaffoldingService {
         return sb.toString();
     }
 
+    private String buildMvcController(String basePackage, ProcessedClass processedClass) {
+        String controllerPath = buildControllerPath(processedClass.entityName());
+        StringBuilder sb = new StringBuilder();
+        sb.append("package ").append(basePackage).append(".controller;\n\n");
+        sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
+        sb.append("import ").append(basePackage).append(".service.").append(processedClass.serviceName()).append(";\n");
+        sb.append("import org.springframework.stereotype.Controller;\n");
+        sb.append("import org.springframework.ui.Model;\n");
+        sb.append("import org.springframework.web.bind.annotation.*;\n\n");
+
+        sb.append("@Controller\n");
+        sb.append("@RequestMapping(\"/").append(controllerPath).append("\")\n");
+        sb.append("public class ").append(processedClass.controllerName()).append(" {\n\n");
+        sb.append("    private final ").append(processedClass.serviceName()).append(" service;\n\n");
+        sb.append("    public ").append(processedClass.controllerName()).append("(")
+            .append(processedClass.serviceName()).append(" service) {\n");
+        sb.append("        this.service = service;\n");
+        sb.append("    }\n\n");
+
+        sb.append("    @GetMapping\n");
+        sb.append("    public String list(Model model) {\n");
+        sb.append("        model.addAttribute(\"items\", service.findAll());\n");
+        sb.append("        return \"").append(controllerPath).append("/list\";\n");
+        sb.append("    }\n\n");
+
+        sb.append("    @GetMapping(\"/create\")\n");
+        sb.append("    public String showCreateForm(Model model) {\n");
+        sb.append("        model.addAttribute(\"item\", new ").append(processedClass.dtoName()).append("());\n");
+        sb.append("        return \"").append(controllerPath).append("/form\";\n");
+        sb.append("    }\n\n");
+
+        sb.append("    @GetMapping(\"/{id}/edit\")\n");
+        sb.append("    public String showEditForm(@PathVariable ").append(processedClass.identifier().type())
+            .append(" id, Model model) {\n");
+        sb.append("        model.addAttribute(\"item\", service.findById(id));\n");
+        sb.append("        return \"").append(controllerPath).append("/form\";\n");
+        sb.append("    }\n\n");
+
+        sb.append("    @PostMapping(\"/save\")\n");
+        sb.append("    public String save(@ModelAttribute(\"item\") ").append(processedClass.dtoName()).append(" dto) {\n");
+        sb.append("        if (dto.get").append(StringUtils.capitalize(processedClass.identifier().name()))
+            .append("() == null) {\n");
+        sb.append("            service.create(dto);\n");
+        sb.append("        } else {\n");
+        sb.append("            service.update(dto.get").append(StringUtils.capitalize(processedClass.identifier().name()))
+            .append("(), dto);\n");
+        sb.append("        }\n");
+        sb.append("        return \"redirect:/").append(controllerPath).append("\";\n");
+        sb.append("    }\n\n");
+
+        sb.append("    @PostMapping(\"/{id}/delete\")\n");
+        sb.append("    public String delete(@PathVariable ").append(processedClass.identifier().type()).append(" id) {\n");
+        sb.append("        service.delete(id);\n");
+        sb.append("        return \"redirect:/").append(controllerPath).append("\";\n");
+        sb.append("    }\n");
+
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+    private String buildListTemplate(ProcessedClass processedClass, String controllerPath) {
+        String idField = processedClass.identifier().name();
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html>\n");
+        sb.append("<html xmlns:th=\"http://www.thymeleaf.org\">\n");
+        sb.append("<head>\n");
+        sb.append("    <meta charset=\"UTF-8\">\n");
+        sb.append("    <title>").append(processedClass.entityName()).append(" - Lista</title>\n");
+        sb.append("    <style>\n");
+        sb.append("        body { font-family: Arial, sans-serif; margin: 30px; }\n");
+        sb.append("        table { width: 100%; border-collapse: collapse; margin-top: 20px; }\n");
+        sb.append("        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }\n");
+        sb.append("        th { background: #f0f0f0; }\n");
+        sb.append("        a.button { display: inline-block; padding: 8px 16px; background: #2c3e50; color: #fff; text-decoration: none; border-radius: 4px; }\n");
+        sb.append("        .actions { display: flex; gap: 8px; }\n");
+        sb.append("        .actions form { display: inline; }\n");
+        sb.append("    </style>\n");
+        sb.append("</head>\n");
+        sb.append("<body>\n");
+        sb.append("    <h1>").append(processedClass.entityName()).append("</h1>\n");
+        sb.append("    <a class=\"button\" th:href=\"@{'/").append(controllerPath).append("/create'}\">Novo registro</a>\n");
+        sb.append("    <table>\n");
+        sb.append("        <thead>\n");
+        sb.append("            <tr>\n");
+        for (ProcessedField field : processedClass.fields()) {
+            sb.append("                <th>").append(StringUtils.capitalize(field.name())).append("</th>\n");
+        }
+        sb.append("                <th>Ações</th>\n");
+        sb.append("            </tr>\n");
+        sb.append("        </thead>\n");
+        sb.append("        <tbody>\n");
+        sb.append("            <tr th:each=\"item : ${items}\">\n");
+        for (ProcessedField field : processedClass.fields()) {
+            sb.append("                <td th:text=\"${item.").append(field.name()).append("}\"></td>\n");
+        }
+        sb.append("                <td class=\"actions\">\n");
+        sb.append("                    <a class=\"button\" th:href=\"@{'/").append(controllerPath).append("/' + ${item.")
+            .append(idField).append("} + '/edit'}\">Editar</a>\n");
+        sb.append("                    <form th:action=\"@{'/").append(controllerPath).append("/' + ${item.")
+            .append(idField).append("} + '/delete'}\" method=\"post\" style=\"display:inline;\">\n");
+        sb.append("                        <button type=\"submit\">Excluir</button>\n");
+        sb.append("                    </form>\n");
+        sb.append("                </td>\n");
+        sb.append("            </tr>\n");
+        sb.append("        </tbody>\n");
+        sb.append("    </table>\n");
+        sb.append("</body>\n");
+        sb.append("</html>\n");
+        return sb.toString();
+    }
+
+    private String buildFormTemplate(ProcessedClass processedClass, String controllerPath) {
+        String idField = processedClass.identifier().name();
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html>\n");
+        sb.append("<html xmlns:th=\"http://www.thymeleaf.org\">\n");
+        sb.append("<head>\n");
+        sb.append("    <meta charset=\"UTF-8\">\n");
+        sb.append("    <title>").append(processedClass.entityName()).append(" - Formulário</title>\n");
+        sb.append("    <style>\n");
+        sb.append("        body { font-family: Arial, sans-serif; margin: 30px; }\n");
+        sb.append("        form { max-width: 600px; }\n");
+        sb.append("        label { display: block; margin-top: 20px; font-weight: bold; }\n");
+        sb.append("        input { width: 100%; padding: 10px; margin-top: 8px; box-sizing: border-box; }\n");
+        sb.append("        .buttons { margin-top: 20px; display: flex; gap: 10px; }\n");
+        sb.append("        button, a.button { padding: 10px 16px; border: none; border-radius: 4px; cursor: pointer; }\n");
+        sb.append("        button { background: #27ae60; color: #fff; }\n");
+        sb.append("        a.button { background: #bdc3c7; color: #2c3e50; text-decoration: none; }\n");
+        sb.append("    </style>\n");
+        sb.append("</head>\n");
+        sb.append("<body>\n");
+        sb.append("    <h1>Gerenciar ").append(processedClass.entityName()).append("</h1>\n");
+        sb.append("    <form th:action=\"@{'/").append(controllerPath).append("/save'}\" method=\"post\" th:object=\"${item}\">\n");
+        sb.append("        <input type=\"hidden\" th:field=\"*{").append(idField).append("}\">\n");
+        for (ProcessedField field : processedClass.fields()) {
+            if (field.identifier()) {
+                continue;
+            }
+            sb.append("        <label>").append(StringUtils.capitalize(field.name())).append("</label>\n");
+            sb.append("        <input type=\"text\" th:field=\"*{").append(field.name()).append("}\" />\n");
+        }
+        sb.append("        <div class=\"buttons\">\n");
+        sb.append("            <button type=\"submit\">Salvar</button>\n");
+        sb.append("            <a class=\"button\" th:href=\"@{'/").append(controllerPath).append("'}\">Cancelar</a>\n");
+        sb.append("        </div>\n");
+        sb.append("    </form>\n");
+        sb.append("</body>\n");
+        sb.append("</html>\n");
+        return sb.toString();
+    }
+
     private String buildColumnAnnotation(ProcessedField field) {
         List<String> attributes = new ArrayList<>();
         if (field.required()) {
@@ -401,15 +573,20 @@ public class CrudScaffoldingService {
         return imports;
     }
 
-    private String buildReadme(List<CrudClassDefinition> classes, String basePackage) {
+    private String buildReadme(CrudGenerationRequest request, String basePackage) {
         StringBuilder sb = new StringBuilder();
         sb.append("# CRUD Module\n\n");
         sb.append("Base package: `").append(basePackage).append("`\n\n");
         sb.append("Classes generated:\n");
-        for (CrudClassDefinition definition : classes) {
+        for (CrudClassDefinition definition : request.getClasses()) {
             sb.append("- ").append(definition.getName()).append("\n");
         }
         sb.append("\nGenerated layers: Entity, DTO, Repository, Service, Controller.\n");
+        if (request.isThymeleafViews()) {
+            sb.append("Includes Thymeleaf MVC controllers, list and form templates.\n");
+        } else {
+            sb.append("Exposes RESTful controllers with JSON endpoints.\n");
+        }
         return sb.toString();
     }
 

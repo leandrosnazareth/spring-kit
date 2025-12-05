@@ -3,8 +3,8 @@ package com.leandrosnazareth.spring_kit.service;
 import com.leandrosnazareth.spring_kit.model.CrudGenerationRequest;
 import com.leandrosnazareth.spring_kit.model.Dependency;
 import com.leandrosnazareth.spring_kit.model.ProjectRequest;
-import tools.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -61,7 +61,7 @@ public class ProjectGeneratorService {
         // Generate .gitignore
         addFileToZip(zos, baseDir + ".gitignore", generateGitignore(request));
 
-        appendCrudModuleIfPresent(request, srcMainJava, zos);
+        appendCrudModuleIfPresent(request, srcMainJava, srcMainResources + "templates/", zos);
 
         zos.close();
         return baos.toByteArray();
@@ -74,7 +74,8 @@ public class ProjectGeneratorService {
         zos.closeEntry();
     }
 
-    private void appendCrudModuleIfPresent(ProjectRequest request, String srcMainJava, ZipOutputStream zos) throws IOException {
+    private void appendCrudModuleIfPresent(ProjectRequest request, String srcMainJava,
+                                           String templatesBasePath, ZipOutputStream zos) throws IOException {
         if (request.getCrudDefinition() == null || request.getCrudDefinition().isBlank()) {
             return;
         }
@@ -84,7 +85,16 @@ public class ProjectGeneratorService {
         }
         crudRequest.setBasePackage(request.getPackageName());
         crudRequest.setModuleName(request.getArtifactId() + "-crud");
-        crudScaffoldingService.appendCrudToProject(crudRequest, srcMainJava, request.getPackageName(), zos);
+        crudRequest.setThymeleafViews(hasThymeleafDependency(request));
+        crudScaffoldingService.appendCrudToProject(crudRequest, srcMainJava, templatesBasePath, request.getPackageName(), zos);
+    }
+
+    private boolean hasThymeleafDependency(ProjectRequest request) {
+        if (request.getDependencies() == null) {
+            return false;
+        }
+        return request.getDependencies().stream()
+            .anyMatch(dep -> "thymeleaf".equalsIgnoreCase(dep));
     }
 
     private String generatePomXml(ProjectRequest request) {

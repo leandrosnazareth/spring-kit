@@ -20,4 +20,6 @@ public class CrudGenerationRequest {
     @Valid
     @NotEmpty
     private List<CrudClassDefinition> classes = new ArrayList<>();
+
+    private boolean thymeleafViews;
 }
