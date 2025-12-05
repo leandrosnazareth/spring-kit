@@ -74,6 +74,7 @@ public class CrudScaffoldingService {
         }
         boolean thymeleafViews = request.isThymeleafViews();
         boolean useLombok = request.isUseLombok();
+        boolean useJakarta = request.isUseJakartaPersistence();
         String normalizedTemplatePath = destinationTemplatesPath;
         if (normalizedTemplatePath != null && !normalizedTemplatePath.endsWith("/")) {
             normalizedTemplatePath = normalizedTemplatePath + "/";
@@ -81,7 +82,7 @@ public class CrudScaffoldingService {
         for (CrudClassDefinition classDefinition : request.getClasses()) {
             ProcessedClass processedClass = prepareClass(classDefinition);
 
-            String entityContent = buildEntity(basePackage, processedClass, useLombok);
+            String entityContent = buildEntity(basePackage, processedClass, useLombok, useJakarta);
             String dtoContent = buildDto(basePackage, processedClass, useLombok);
             String repositoryContent = buildRepository(basePackage, processedClass);
             String serviceContent = buildService(basePackage, processedClass);
@@ -165,10 +166,11 @@ public class CrudScaffoldingService {
         return new ProcessedField(fieldName, type, identifier, field.isRequired(), field.isUnique());
     }
 
-    private String buildEntity(String basePackage, ProcessedClass processedClass, boolean useLombok) {
+    private String buildEntity(String basePackage, ProcessedClass processedClass, boolean useLombok, boolean useJakarta) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".entity;\n\n");
-        sb.append("import jakarta.persistence.*;\n");
+        String persistenceImport = useJakarta ? "jakarta.persistence" : "javax.persistence";
+        sb.append("import ").append(persistenceImport).append(".*;\n");
         Set<String> imports = resolveFieldImports(processedClass.fields());
         if (useLombok) {
             sb.append("import lombok.AllArgsConstructor;\n");

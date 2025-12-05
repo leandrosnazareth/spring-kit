@@ -24,4 +24,6 @@ public class CrudGenerationRequest {
     private boolean thymeleafViews;
 
     private boolean useLombok;
+
+    private boolean useJakartaPersistence = true;
 }

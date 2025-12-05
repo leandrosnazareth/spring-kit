@@ -87,6 +87,7 @@ public class ProjectGeneratorService {
         crudRequest.setModuleName(request.getArtifactId() + "-crud");
         crudRequest.setThymeleafViews(hasDependency(request, "thymeleaf"));
         crudRequest.setUseLombok(hasDependency(request, "lombok"));
+        crudRequest.setUseJakartaPersistence(isJakartaPersistence(request));
         crudScaffoldingService.appendCrudToProject(crudRequest, srcMainJava, templatesBasePath, request.getPackageName(), zos);
     }
 
@@ -166,6 +167,14 @@ public class ProjectGeneratorService {
             return DatabaseType.POSTGRESQL;
         }
         return DatabaseType.NONE;
+    }
+
+    private boolean isJakartaPersistence(ProjectRequest request) {
+        String version = request.getSpringBootVersion();
+        if (version == null) {
+            return true;
+        }
+        return !version.startsWith("2.");
     }
 
     private enum DatabaseType {
