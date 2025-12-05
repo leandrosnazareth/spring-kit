@@ -49,7 +49,7 @@ public class ProjectGeneratorService {
             generateMainClass(request));
 
         // Generate application.properties
-        addFileToZip(zos, srcMainResources + "application.properties", "# Application Configuration\n");
+        addFileToZip(zos, srcMainResources + "application.properties", generateApplicationProperties(request));
 
         // Generate test class
         addFileToZip(zos, srcTestJava + capitalize(request.getName()) + "ApplicationTests.java", 
@@ -85,16 +85,90 @@ public class ProjectGeneratorService {
         }
         crudRequest.setBasePackage(request.getPackageName());
         crudRequest.setModuleName(request.getArtifactId() + "-crud");
-        crudRequest.setThymeleafViews(hasThymeleafDependency(request));
+        crudRequest.setThymeleafViews(hasDependency(request, "thymeleaf"));
         crudScaffoldingService.appendCrudToProject(crudRequest, srcMainJava, templatesBasePath, request.getPackageName(), zos);
     }
 
-    private boolean hasThymeleafDependency(ProjectRequest request) {
+    private boolean hasDependency(ProjectRequest request, String dependencyId) {
         if (request.getDependencies() == null) {
             return false;
         }
         return request.getDependencies().stream()
-            .anyMatch(dep -> "thymeleaf".equalsIgnoreCase(dep));
+            .anyMatch(dep -> dependencyId.equalsIgnoreCase(dep));
+    }
+
+    private String generateApplicationProperties(ProjectRequest request) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# Application Configuration\n");
+        sb.append("server.port=8080\n");
+        sb.append("spring.application.name=").append(request.getName()).append("\n\n");
+
+        sb.append("# Datasource Configuration\n");
+        DatabaseType dbType = resolveDatabaseType(request);
+        String dbName = request.getArtifactId();
+        switch (dbType) {
+            case H2 -> {
+                sb.append("spring.datasource.url=jdbc:h2:mem:").append(dbName)
+                    .append(";DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE\n");
+                sb.append("spring.datasource.username=sa\n");
+                sb.append("spring.datasource.password=\n");
+                sb.append("spring.datasource.driver-class-name=org.h2.Driver\n");
+                sb.append("spring.h2.console.enabled=true\n");
+                sb.append("spring.jpa.database-platform=org.hibernate.dialect.H2Dialect\n");
+            }
+            case MYSQL -> {
+                sb.append("spring.datasource.url=jdbc:mysql://localhost:3306/").append(dbName)
+                    .append("?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true\n");
+                sb.append("spring.datasource.username=root\n");
+                sb.append("spring.datasource.password=secret\n");
+                sb.append("spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver\n");
+            }
+            case POSTGRESQL -> {
+                sb.append("spring.datasource.url=jdbc:postgresql://localhost:5432/").append(dbName).append("\n");
+                sb.append("spring.datasource.username=postgres\n");
+                sb.append("spring.datasource.password=secret\n");
+                sb.append("spring.datasource.driver-class-name=org.postgresql.Driver\n");
+            }
+            case NONE -> sb.append("# Configure your datasource here if needed\n");
+        }
+        sb.append("\n");
+
+        if (hasDependency(request, "jpa")) {
+            sb.append("# JPA / Hibernate\n");
+            sb.append("spring.jpa.hibernate.ddl-auto=update\n");
+            sb.append("spring.jpa.show-sql=true\n");
+            sb.append("spring.jpa.open-in-view=false\n\n");
+        }
+
+        if (hasDependency(request, "thymeleaf")) {
+            sb.append("# Thymeleaf\n");
+            sb.append("spring.thymeleaf.prefix=classpath:/templates/\n");
+            sb.append("spring.thymeleaf.suffix=.html\n");
+            sb.append("spring.thymeleaf.cache=false\n");
+            sb.append("spring.thymeleaf.mode=HTML\n\n");
+        }
+
+        sb.append("# Logging\n");
+        sb.append("logging.level.org.springframework=INFO\n");
+        sb.append("logging.level.com.leandrosnazareth=DEBUG\n");
+        return sb.toString();
+    }
+
+    private DatabaseType resolveDatabaseType(ProjectRequest request) {
+        if (hasDependency(request, "h2")) {
+            return DatabaseType.H2;
+        }
+        if (hasDependency(request, "mysql")) {
+            return DatabaseType.MYSQL;
+        }
+        if (hasDependency(request, "postgresql")) {
+            return DatabaseType.POSTGRESQL;
+        }
+        return DatabaseType.NONE;
+    }
+
+    private enum DatabaseType {
+        H2, MYSQL, POSTGRESQL, NONE
     }
 
     private String generatePomXml(ProjectRequest request) {
