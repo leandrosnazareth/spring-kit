@@ -368,19 +368,21 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Group</label>
-                            <input type="text" th:field="*{groupId}" placeholder="com.example" 
+                            <input type="text" id="groupId" th:field="*{groupId}" placeholder="com.example" 
                                    pattern="^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$"
                                    title="Must follow Java package naming (lowercase letters, numbers, underscores, dots)"
-                                   required>
+                                   required
+                                   oninput="updatePackageName()">
                             <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., com.example or org.mycompany</small>
                         </div>
 
                         <div class="form-group">
                             <label>Artifact</label>
-                            <input type="text" th:field="*{artifactId}" placeholder="demo"
+                            <input type="text" id="artifactId" th:field="*{artifactId}" placeholder="demo"
                                    pattern="^[a-z][a-z0-9-]*$"
                                    title="Must start with lowercase letter and contain only lowercase letters, numbers, and hyphens"
-                                   required>
+                                   required
+                                   oninput="syncArtifactToName()">
                             <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., my-app or demo-project</small>
                         </div>
                     </div>
@@ -388,19 +390,25 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Name</label>
-                            <input type="text" th:field="*{name}" placeholder="demo"
+                            <input type="text" id="name" th:field="*{name}" placeholder="demo"
                                    pattern="^[a-zA-Z][a-zA-Z0-9]*$"
                                    title="Must start with a letter and contain only letters and numbers (no spaces)"
-                                   required>
+                                   required
+                                   oninput="updatePackageName()">
                             <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., MyApp or DemoProject (used as class name)</small>
                         </div>
 
                         <div class="form-group">
-                            <label>Package Name</label>
-                            <input type="text" th:field="*{packageName}" placeholder="com.example.demo"
+                            <label>
+                                Package Name
+                                <input type="checkbox" id="autoPackage" checked style="margin-left: 10px; width: auto;">
+                                <span style="font-weight: normal; font-size: 0.9em;">Auto-sync</span>
+                            </label>
+                            <input type="text" id="packageName" th:field="*{packageName}" placeholder="com.example.demo"
                                    pattern="^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$"
                                    title="Must follow Java package naming (lowercase letters, numbers, underscores, dots)"
-                                   required>
+                                   required
+                                   oninput="disableAutoPackage()">
                             <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., com.example.myapp</small>
                         </div>
                     </div>
@@ -460,6 +468,56 @@
     </div>
 
     <script>
+        // Auto-sync functionality
+        function syncArtifactToName() {
+            const artifactId = document.getElementById('artifactId').value;
+            const nameInput = document.getElementById('name');
+            
+            // Convert artifact-id to NameFormat (remove hyphens and capitalize)
+            if (artifactId) {
+                const nameParts = artifactId.split('-');
+                const camelCaseName = nameParts
+                    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+                    .join('');
+                nameInput.value = camelCaseName;
+            }
+            
+            updatePackageName();
+        }
+        
+        function updatePackageName() {
+            const autoPackage = document.getElementById('autoPackage');
+            if (!autoPackage.checked) return;
+            
+            const groupId = document.getElementById('groupId').value;
+            const artifactId = document.getElementById('artifactId').value;
+            const packageNameInput = document.getElementById('packageName');
+            
+            if (groupId && artifactId) {
+                // Convert artifact-id to package format (replace hyphens with nothing or underscore)
+                const packageSuffix = artifactId.replace(/-/g, '');
+                packageNameInput.value = `${groupId}.${packageSuffix}`;
+            } else if (groupId) {
+                packageNameInput.value = groupId;
+            }
+        }
+        
+        function disableAutoPackage() {
+            // When user manually edits package name, disable auto-sync
+            const autoPackage = document.getElementById('autoPackage');
+            const packageName = document.getElementById('packageName');
+            const groupId = document.getElementById('groupId').value;
+            const artifactId = document.getElementById('artifactId').value;
+            
+            // Check if value was manually changed
+            if (groupId && artifactId) {
+                const expectedValue = `${groupId}.${artifactId.replace(/-/g, '')}`;
+                if (packageName.value !== expectedValue && packageName.value !== groupId) {
+                    autoPackage.checked = false;
+                }
+            }
+        }
+
         function validateForm() {
             const form = document.querySelector('form');
             
@@ -536,12 +594,16 @@
 
         function resetForm() {
             document.querySelector('form').reset();
+            document.getElementById('autoPackage').checked = true;
             updateSpringVersions();
         }
 
         // Initialize Spring versions on page load
         document.addEventListener('DOMContentLoaded', function() {
             updateSpringVersions();
+            
+            // Set initial package name on page load
+            updatePackageName();
         });
 
         // Add visual feedback for dependency selection
