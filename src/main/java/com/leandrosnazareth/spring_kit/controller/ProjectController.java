@@ -9,8 +9,11 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+import jakarta.validation.Valid;
 import java.io.IOException;
 
 @Controller
@@ -29,7 +32,9 @@ public class ProjectController {
     public String index(Model model) {
         model.addAttribute("javaVersions", JavaVersion.values());
         model.addAttribute("dependencies", dependencyService.getAllDependencies());
-        model.addAttribute("projectRequest", new ProjectRequest());
+        if (!model.containsAttribute("projectRequest")) {
+            model.addAttribute("projectRequest", new ProjectRequest());
+        }
         return "index";
     }
 
@@ -45,7 +50,18 @@ public class ProjectController {
     }
 
     @PostMapping("/generate")
-    public ResponseEntity<byte[]> generateProject(@ModelAttribute ProjectRequest request) {
+    public ResponseEntity<byte[]> generateProject(@Valid @ModelAttribute ProjectRequest request, 
+                                                   BindingResult bindingResult,
+                                                   RedirectAttributes redirectAttributes) {
+        if (bindingResult.hasErrors()) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        // Additional custom validations
+        if (!isValidJavaIdentifier(request.getName())) {
+            return ResponseEntity.badRequest().build();
+        }
+        
         try {
             byte[] zipFile = projectGeneratorService.generateProject(request);
             
@@ -59,5 +75,20 @@ public class ProjectController {
         } catch (IOException e) {
             return ResponseEntity.internalServerError().build();
         }
+    }
+    
+    private boolean isValidJavaIdentifier(String name) {
+        if (name == null || name.isEmpty()) {
+            return false;
+        }
+        if (!Character.isJavaIdentifierStart(name.charAt(0))) {
+            return false;
+        }
+        for (int i = 1; i < name.length(); i++) {
+            if (!Character.isJavaIdentifierPart(name.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 }

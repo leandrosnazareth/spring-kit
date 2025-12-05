@@ -125,6 +125,34 @@
             box-shadow: 0 0 0 2px rgba(90, 108, 125, 0.1);
         }
 
+        .dependencies-container {
+            max-height: 500px;
+            overflow-y: auto;
+            padding-right: 10px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 15px;
+            background: #fafafa;
+        }
+
+        .dependencies-container::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .dependencies-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .dependencies-container::-webkit-scrollbar-thumb {
+            background: #bdc3c7;
+            border-radius: 4px;
+        }
+
+        .dependencies-container::-webkit-scrollbar-thumb:hover {
+            background: #95a5a6;
+        }
+
         .dependencies-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -243,6 +271,22 @@
             width: 20px;
             text-align: center;
         }
+
+        .form-group input:invalid:not(:placeholder-shown),
+        .form-group select:invalid:not(:placeholder-shown),
+        .form-group textarea:invalid:not(:placeholder-shown) {
+            border-color: #e74c3c;
+        }
+
+        .form-group input:valid:not(:placeholder-shown),
+        .form-group select:valid:not(:placeholder-shown),
+        .form-group textarea:valid:not(:placeholder-shown) {
+            border-color: #27ae60;
+        }
+
+        small {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -324,24 +368,40 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Group</label>
-                            <input type="text" th:field="*{groupId}" placeholder="com.example">
+                            <input type="text" th:field="*{groupId}" placeholder="com.example" 
+                                   pattern="^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$"
+                                   title="Must follow Java package naming (lowercase letters, numbers, underscores, dots)"
+                                   required>
+                            <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., com.example or org.mycompany</small>
                         </div>
 
                         <div class="form-group">
                             <label>Artifact</label>
-                            <input type="text" th:field="*{artifactId}" placeholder="demo">
+                            <input type="text" th:field="*{artifactId}" placeholder="demo"
+                                   pattern="^[a-z][a-z0-9-]*$"
+                                   title="Must start with lowercase letter and contain only lowercase letters, numbers, and hyphens"
+                                   required>
+                            <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., my-app or demo-project</small>
                         </div>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label>Name</label>
-                            <input type="text" th:field="*{name}" placeholder="demo">
+                            <input type="text" th:field="*{name}" placeholder="demo"
+                                   pattern="^[a-zA-Z][a-zA-Z0-9]*$"
+                                   title="Must start with a letter and contain only letters and numbers (no spaces)"
+                                   required>
+                            <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., MyApp or DemoProject (used as class name)</small>
                         </div>
 
                         <div class="form-group">
                             <label>Package Name</label>
-                            <input type="text" th:field="*{packageName}" placeholder="com.example.demo">
+                            <input type="text" th:field="*{packageName}" placeholder="com.example.demo"
+                                   pattern="^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$"
+                                   title="Must follow Java package naming (lowercase letters, numbers, underscores, dots)"
+                                   required>
+                            <small style="color: #7f8c8d; font-size: 0.8em; margin-top: 4px;">e.g., com.example.myapp</small>
                         </div>
                     </div>
 
@@ -369,17 +429,19 @@
                                onkeyup="filterDependencies()" style="width: 100%;">
                     </div>
                     
-                    <div class="dependencies-grid">
-                        <div class="dependency-item" th:each="dep : ${dependencies}">
-                            <label>
-                                <input type="checkbox" 
-                                       th:field="*{dependencies}" 
-                                       th:value="${dep.id}">
-                                <div class="dependency-info">
-                                    <div class="dependency-name" th:text="${dep.name}"></div>
-                                    <div class="dependency-desc" th:text="${dep.description}"></div>
-                                </div>
-                            </label>
+                    <div class="dependencies-container">
+                        <div class="dependencies-grid">
+                            <div class="dependency-item" th:each="dep : ${dependencies}">
+                                <label>
+                                    <input type="checkbox" 
+                                           th:field="*{dependencies}" 
+                                           th:value="${dep.id}">
+                                    <div class="dependency-info">
+                                        <div class="dependency-name" th:text="${dep.name}"></div>
+                                        <div class="dependency-desc" th:text="${dep.description}"></div>
+                                    </div>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -389,7 +451,7 @@
                     <button type="button" class="btn btn-secondary" onclick="resetForm()">
                         <i class="fa-solid fa-rotate-right"></i> Reset
                     </button>
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary" onclick="return validateForm()">
                         <i class="fa-solid fa-download"></i> Generate Project
                     </button>
                 </div>
@@ -398,6 +460,47 @@
     </div>
 
     <script>
+        function validateForm() {
+            const form = document.querySelector('form');
+            
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return false;
+            }
+            
+            // Additional custom validations
+            const name = document.querySelector('input[name="name"]').value;
+            const groupId = document.querySelector('input[name="groupId"]').value;
+            const artifactId = document.querySelector('input[name="artifactId"]').value;
+            const packageName = document.querySelector('input[name="packageName"]').value;
+            
+            // Check for Java reserved keywords
+            const javaKeywords = ['abstract', 'assert', 'boolean', 'break', 'byte', 'case', 'catch', 'char', 
+                                  'class', 'const', 'continue', 'default', 'do', 'double', 'else', 'enum', 
+                                  'extends', 'final', 'finally', 'float', 'for', 'goto', 'if', 'implements', 
+                                  'import', 'instanceof', 'int', 'interface', 'long', 'native', 'new', 'package', 
+                                  'private', 'protected', 'public', 'return', 'short', 'static', 'strictfp', 
+                                  'super', 'switch', 'synchronized', 'this', 'throw', 'throws', 'transient', 
+                                  'try', 'void', 'volatile', 'while'];
+            
+            const nameLower = name.toLowerCase();
+            if (javaKeywords.includes(nameLower)) {
+                alert(`Error: "${name}" is a Java reserved keyword. Please choose a different name.`);
+                return false;
+            }
+            
+            // Check package name parts
+            const packageParts = packageName.split('.');
+            for (const part of packageParts) {
+                if (javaKeywords.includes(part)) {
+                    alert(`Error: Package name contains Java reserved keyword "${part}". Please choose a different package name.`);
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+
         function filterDependencies() {
             const searchInput = document.getElementById('searchDeps').value.toLowerCase();
             const dependencyItems = document.querySelectorAll('.dependency-item');

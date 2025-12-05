@@ -50,6 +50,9 @@ public class ProjectGeneratorService {
         // Generate README
         addFileToZip(zos, baseDir + "README.md", generateReadme(request));
 
+        // Generate .gitignore
+        addFileToZip(zos, baseDir + ".gitignore", generateGitignore(request));
+
         zos.close();
         return baos.toByteArray();
     }
@@ -227,6 +230,70 @@ public class ProjectGeneratorService {
             sb.append("./gradlew bootRun\n");
             sb.append("```\n");
         }
+        
+        return sb.toString();
+    }
+
+    private String generateGitignore(ProjectRequest request) {
+        StringBuilder sb = new StringBuilder();
+        
+        sb.append("HELP.md\n");
+        sb.append("target/\n");
+        sb.append("!.mvn/wrapper/maven-wrapper.jar\n");
+        sb.append("!**/src/main/**/target/\n");
+        sb.append("!**/src/test/**/target/\n\n");
+        
+        sb.append("### STS ###\n");
+        sb.append(".apt_generated\n");
+        sb.append(".classpath\n");
+        sb.append(".factorypath\n");
+        sb.append(".project\n");
+        sb.append(".settings\n");
+        sb.append(".springBeans\n");
+        sb.append(".sts4-cache\n\n");
+        
+        sb.append("### IntelliJ IDEA ###\n");
+        sb.append(".idea\n");
+        sb.append("*.iws\n");
+        sb.append("*.iml\n");
+        sb.append("*.ipr\n\n");
+        
+        sb.append("### NetBeans ###\n");
+        sb.append("/nbproject/private/\n");
+        sb.append("/nbbuild/\n");
+        sb.append("/dist/\n");
+        sb.append("/nbdist/\n");
+        sb.append("/.nb-gradle/\n");
+        sb.append("build/\n");
+        sb.append("!**/src/main/**/build/\n");
+        sb.append("!**/src/test/**/build/\n\n");
+        
+        sb.append("### VS Code ###\n");
+        sb.append(".vscode/\n\n");
+        
+        // Gradle specific
+        if ("gradle".equals(request.getProjectType())) {
+            sb.append("### Gradle ###\n");
+            sb.append(".gradle\n");
+            sb.append("gradle-app.setting\n");
+            sb.append("!gradle-wrapper.jar\n");
+            sb.append(".gradletasknamecache\n\n");
+        }
+        
+        // Maven specific
+        if ("maven".equals(request.getProjectType())) {
+            sb.append("### Maven ###\n");
+            sb.append(".mvn/wrapper/maven-wrapper.jar\n");
+            sb.append(".flattened-pom.xml\n\n");
+        }
+        
+        sb.append("### Logs ###\n");
+        sb.append("*.log\n");
+        sb.append("logs/\n\n");
+        
+        sb.append("### OS ###\n");
+        sb.append(".DS_Store\n");
+        sb.append("Thumbs.db\n");
         
         return sb.toString();
     }
