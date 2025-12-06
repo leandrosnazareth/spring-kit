@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -11,6 +12,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -20,6 +22,7 @@ import org.springframework.util.StringUtils;
 import com.leandrosnazareth.spring_kit.model.CrudClassDefinition;
 import com.leandrosnazareth.spring_kit.model.CrudFieldDefinition;
 import com.leandrosnazareth.spring_kit.model.CrudGenerationRequest;
+import com.leandrosnazareth.spring_kit.model.CrudRelationshipType;
 
 @Service
 public class CrudScaffoldingService {
@@ -79,13 +82,18 @@ public class CrudScaffoldingService {
         if (normalizedTemplatePath != null && !normalizedTemplatePath.endsWith("/")) {
             normalizedTemplatePath = normalizedTemplatePath + "/";
         }
+        Map<String, ProcessedClass> processedClasses = new LinkedHashMap<>();
         for (CrudClassDefinition classDefinition : request.getClasses()) {
             ProcessedClass processedClass = prepareClass(classDefinition);
+            processedClasses.put(processedClass.entityName(), processedClass);
+        }
 
-            String entityContent = buildEntity(basePackage, processedClass, useLombok, useJakarta);
-            String dtoContent = buildDto(basePackage, processedClass, useLombok);
+        for (ProcessedClass processedClass : processedClasses.values()) {
+
+            String entityContent = buildEntity(basePackage, processedClass, useLombok, useJakarta, processedClasses);
+            String dtoContent = buildDto(basePackage, processedClass, useLombok, processedClasses);
             String repositoryContent = buildRepository(basePackage, processedClass);
-            String serviceContent = buildService(basePackage, processedClass);
+            String serviceContent = buildService(basePackage, processedClass, processedClasses);
             String controllerContent = thymeleafViews
                 ? buildMvcController(basePackage, processedClass)
                 : buildRestController(basePackage, processedClass);
@@ -161,12 +169,26 @@ public class CrudScaffoldingService {
         if (!StringUtils.hasText(fieldName)) {
             fieldName = "field" + UUID.randomUUID().toString().replace("-", "");
         }
-        String type = normalizeType(field.getType());
+        boolean objectField = field.isObjectType();
+        String type;
+        String targetEntity = null;
+        CrudRelationshipType relationshipType = field.getRelationshipType();
+        if (objectField) {
+            targetEntity = toPascalCase(Optional.ofNullable(field.getTargetClassName()).orElse(""));
+            if (!StringUtils.hasText(targetEntity)) {
+                objectField = false;
+            }
+            type = targetEntity;
+        } else {
+            type = normalizeType(field.getType());
+        }
         boolean identifier = field.isIdentifier();
-        return new ProcessedField(fieldName, type, identifier, field.isRequired(), field.isUnique());
+        return new ProcessedField(fieldName, type, identifier, field.isRequired(),
+            field.isUnique(), objectField, relationshipType, targetEntity);
     }
 
-    private String buildEntity(String basePackage, ProcessedClass processedClass, boolean useLombok, boolean useJakarta) {
+    private String buildEntity(String basePackage, ProcessedClass processedClass, boolean useLombok,
+                               boolean useJakarta, Map<String, ProcessedClass> processedClasses) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".entity;\n\n");
         String persistenceImport = useJakarta ? "jakarta.persistence" : "javax.persistence";
@@ -193,35 +215,48 @@ public class CrudScaffoldingService {
             if (field.identifier()) {
                 sb.append("    @Id\n");
                 sb.append("    @GeneratedValue(strategy = GenerationType.IDENTITY)\n");
-            } else {
+            } else if (!field.objectField()) {
                 String columnAnnotation = buildColumnAnnotation(field);
                 if (StringUtils.hasText(columnAnnotation)) {
                     sb.append("    ").append(columnAnnotation).append("\n");
                 }
             }
-            sb.append("    private ").append(field.type()).append(" ").append(field.name()).append(";\n\n");
+            if (field.objectField()) {
+                String annotations = buildRelationshipAnnotations(field, processedClass, processedClasses);
+                if (StringUtils.hasText(annotations)) {
+                    sb.append(annotations);
+                }
+            }
+            sb.append("    private ").append(resolveEntityFieldType(field)).append(" ").append(field.name()).append(";\n\n");
         }
 
         if (!useLombok) {
-            appendConstructors(sb, processedClass.entityName(), processedClass.fields());
-            appendGettersAndSetters(sb, processedClass.fields());
+            List<GeneratedField> generatedFields = processedClass.fields().stream()
+                .map(f -> new GeneratedField(f.name(), resolveEntityFieldType(f)))
+                .collect(Collectors.toList());
+            appendConstructors(sb, processedClass.entityName(), generatedFields);
+            appendGettersAndSetters(sb, generatedFields);
         }
 
         sb.append("}\n");
         return sb.toString();
     }
 
-    private String buildDto(String basePackage, ProcessedClass processedClass, boolean useLombok) {
+    private String buildDto(String basePackage, ProcessedClass processedClass, boolean useLombok,
+                            Map<String, ProcessedClass> processedClasses) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".dto;\n\n");
-        Set<String> imports = resolveFieldImports(processedClass.fields());
+        Set<String> imports = new TreeSet<>();
         if (useLombok) {
             sb.append("import lombok.AllArgsConstructor;\n");
             sb.append("import lombok.Data;\n");
             sb.append("import lombok.NoArgsConstructor;\n");
         }
+        if (processedClass.fields().stream().anyMatch(f -> f.objectField() && f.isCollection())) {
+            imports.add("java.util.List");
+        }
         imports.forEach(i -> sb.append("import ").append(i).append(";\n"));
-        if (!imports.isEmpty() || useLombok) {
+        if (!imports.isEmpty()) {
             sb.append("\n");
         }
         if (useLombok) {
@@ -231,14 +266,15 @@ public class CrudScaffoldingService {
         }
         sb.append("public class ").append(processedClass.dtoName()).append(" {\n\n");
 
-        for (ProcessedField field : processedClass.fields()) {
+        List<GeneratedField> dtoFields = buildDtoFields(processedClass, processedClasses);
+        for (GeneratedField field : dtoFields) {
             sb.append("    private ").append(field.type()).append(" ").append(field.name()).append(";\n");
         }
         sb.append("\n");
 
         if (!useLombok) {
-            appendConstructors(sb, processedClass.dtoName(), processedClass.fields());
-            appendGettersAndSetters(sb, processedClass.fields());
+            appendConstructors(sb, processedClass.dtoName(), dtoFields);
+            appendGettersAndSetters(sb, dtoFields);
         }
 
         sb.append("}\n");
@@ -259,7 +295,8 @@ public class CrudScaffoldingService {
         return sb.toString();
     }
 
-    private String buildService(String basePackage, ProcessedClass processedClass) {
+    private String buildService(String basePackage, ProcessedClass processedClass,
+                                Map<String, ProcessedClass> processedClasses) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".service;\n\n");
         sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
@@ -268,6 +305,9 @@ public class CrudScaffoldingService {
         sb.append("import org.springframework.http.HttpStatus;\n");
         sb.append("import org.springframework.stereotype.Service;\n");
         sb.append("import org.springframework.web.server.ResponseStatusException;\n");
+        if (processedClass.fields().stream().anyMatch(f -> f.objectField() && f.isCollection())) {
+            sb.append("import java.util.ArrayList;\n");
+        }
         sb.append("import java.util.List;\n");
         sb.append("import java.util.stream.Collectors;\n\n");
 
@@ -325,8 +365,7 @@ public class CrudScaffoldingService {
         sb.append("        ").append(processedClass.dtoName()).append(" dto = new ")
             .append(processedClass.dtoName()).append("();\n");
         for (ProcessedField field : processedClass.fields()) {
-            String capitalized = StringUtils.capitalize(field.name());
-            sb.append("        dto.set").append(capitalized).append("(entity.get").append(capitalized).append("());\n");
+            appendDtoMapping(sb, field, processedClasses);
         }
         sb.append("        return dto;\n");
         sb.append("    }\n\n");
@@ -336,8 +375,7 @@ public class CrudScaffoldingService {
         sb.append("        ").append(processedClass.entityName()).append(" entity = new ")
             .append(processedClass.entityName()).append("();\n");
         for (ProcessedField field : processedClass.fields()) {
-            String capitalized = StringUtils.capitalize(field.name());
-            sb.append("        entity.set").append(capitalized).append("(dto.get").append(capitalized).append("());\n");
+            appendEntityAssignment(sb, field, processedClasses);
         }
         sb.append("        return entity;\n");
         sb.append("    }\n\n");
@@ -349,14 +387,75 @@ public class CrudScaffoldingService {
             if (field.identifier()) {
                 continue;
             }
-            String capitalized = StringUtils.capitalize(field.name());
-            sb.append("        entity.set").append(capitalized).append("(dto.get")
-                .append(capitalized).append("());\n");
+            appendEntityAssignment(sb, field, processedClasses);
         }
         sb.append("    }\n");
 
         sb.append("}\n");
         return sb.toString();
+    }
+
+    private void appendDtoMapping(StringBuilder sb, ProcessedField field,
+                                  Map<String, ProcessedClass> processedClasses) {
+        String entityGetter = "get" + StringUtils.capitalize(field.name());
+        if (!field.objectField()) {
+            sb.append("        dto.set").append(StringUtils.capitalize(field.name()))
+                .append("(entity.").append(entityGetter).append("());\n");
+            return;
+        }
+        String dtoSetter = getDtoSetterName(field);
+        String targetIdGetter = "get" + StringUtils.capitalize(resolveTargetIdFieldName(field, processedClasses));
+        if (field.isCollection()) {
+            sb.append("        dto.").append(dtoSetter).append("(entity.")
+                .append(entityGetter).append("() == null ? null : entity.")
+                .append(entityGetter).append("().stream()\n");
+            sb.append("            .map(").append(field.targetEntity()).append("::")
+                .append(targetIdGetter).append(")\n");
+            sb.append("            .collect(Collectors.toList()));\n");
+        } else {
+            sb.append("        dto.").append(dtoSetter).append("(entity.")
+                .append(entityGetter).append("() != null ? entity.")
+                .append(entityGetter).append("().").append(targetIdGetter)
+                .append("() : null);\n");
+        }
+    }
+
+    private void appendEntityAssignment(StringBuilder sb, ProcessedField field,
+                                        Map<String, ProcessedClass> processedClasses) {
+        String entitySetter = "set" + StringUtils.capitalize(field.name());
+        if (!field.objectField()) {
+            String dtoGetter = "get" + StringUtils.capitalize(field.name());
+            sb.append("        entity.").append(entitySetter).append("(dto.")
+                .append(dtoGetter).append("());\n");
+            return;
+        }
+        String dtoGetter = getDtoGetterName(field);
+        String targetIdSetter = "set" + StringUtils.capitalize(resolveTargetIdFieldName(field, processedClasses));
+        if (field.isCollection()) {
+            sb.append("        if (dto.").append(dtoGetter).append("() != null) {\n");
+            sb.append("            List<").append(field.targetEntity()).append("> related = new ArrayList<>();\n");
+            sb.append("            for (").append(resolveTargetIdType(field, processedClasses)).append(" id : dto.")
+                .append(dtoGetter).append("()) {\n");
+            sb.append("                ").append(field.targetEntity()).append(" rel = new ")
+                .append(field.targetEntity()).append("();\n");
+            sb.append("                rel.").append(targetIdSetter).append("(id);\n");
+            sb.append("                related.add(rel);\n");
+            sb.append("            }\n");
+            sb.append("            entity.").append(entitySetter).append("(related);\n");
+            sb.append("        } else {\n");
+            sb.append("            entity.").append(entitySetter).append("(new ArrayList<>());\n");
+            sb.append("        }\n");
+        } else {
+            sb.append("        if (dto.").append(dtoGetter).append("() != null) {\n");
+            sb.append("            ").append(field.targetEntity()).append(" related = new ")
+                .append(field.targetEntity()).append("();\n");
+            sb.append("            related.").append(targetIdSetter).append("(dto.")
+                .append(dtoGetter).append("());\n");
+            sb.append("            entity.").append(entitySetter).append("(related);\n");
+            sb.append("        } else {\n");
+            sb.append("            entity.").append(entitySetter).append("(null);\n");
+            sb.append("        }\n");
+        }
     }
 
     private String buildRestController(String basePackage, ProcessedClass processedClass) {
@@ -505,7 +604,8 @@ public class CrudScaffoldingService {
         sb.append("        <tbody>\n");
         sb.append("            <tr th:each=\"item : ${items}\">\n");
         for (ProcessedField field : processedClass.fields()) {
-            sb.append("                <td th:text=\"${item.").append(field.name()).append("}\"></td>\n");
+            sb.append("                <td th:text=\"${item.")
+                .append(getDtoFieldName(field)).append("}\"></td>\n");
         }
         sb.append("                <td class=\"actions\">\n");
         sb.append("                    <a class=\"button\" th:href=\"@{'/").append(controllerPath).append("/' + ${item.")
@@ -551,7 +651,7 @@ public class CrudScaffoldingService {
                 continue;
             }
             sb.append("        <label>").append(StringUtils.capitalize(field.name())).append("</label>\n");
-            sb.append("        <input type=\"text\" th:field=\"*{").append(field.name()).append("}\" />\n");
+            sb.append("        <input type=\"text\" th:field=\"*{").append(getDtoFieldName(field)).append("}\" />\n");
         }
         sb.append("        <div class=\"buttons\">\n");
         sb.append("            <button type=\"submit\">Salvar</button>\n");
@@ -583,6 +683,9 @@ public class CrudScaffoldingService {
             String importName = FIELD_IMPORTS.get(field.type());
             if (importName != null) {
                 imports.add(importName);
+            }
+            if (field.objectField() && field.isCollection()) {
+                imports.add("java.util.List");
             }
         }
         return imports;
@@ -659,26 +762,121 @@ public class CrudScaffoldingService {
         return kebab;
     }
 
-    private void appendConstructors(StringBuilder sb, String className, List<ProcessedField> fields) {
+    private String resolveEntityFieldType(ProcessedField field) {
+        if (field.objectField()) {
+            return field.isCollection() ? "List<" + field.targetEntity() + ">" : field.targetEntity();
+        }
+        return field.type();
+    }
+
+    private List<GeneratedField> buildDtoFields(ProcessedClass processedClass,
+                                                Map<String, ProcessedClass> processedClasses) {
+        List<GeneratedField> fields = new ArrayList<>();
+        for (ProcessedField field : processedClass.fields()) {
+            if (field.objectField()) {
+                fields.add(new GeneratedField(getDtoFieldName(field), getDtoFieldType(field, processedClasses)));
+            } else {
+                fields.add(new GeneratedField(field.name(), field.type()));
+            }
+        }
+        return fields;
+    }
+
+    private String getDtoFieldName(ProcessedField field) {
+        if (!field.objectField()) {
+            return field.name();
+        }
+        return field.isCollection() ? field.name() + "Ids" : field.name() + "Id";
+    }
+
+    private String getDtoFieldType(ProcessedField field, Map<String, ProcessedClass> processedClasses) {
+        if (!field.objectField()) {
+            return field.type();
+        }
+        String identifierType = resolveTargetIdType(field, processedClasses);
+        if (field.isCollection()) {
+            return "List<" + identifierType + ">";
+        }
+        return identifierType;
+    }
+
+    private String resolveTargetIdType(ProcessedField field, Map<String, ProcessedClass> processedClasses) {
+        ProcessedClass target = processedClasses.get(field.targetEntity());
+        if (target == null) {
+            return "Long";
+        }
+        return target.identifier().type();
+    }
+
+    private String resolveTargetIdFieldName(ProcessedField field, Map<String, ProcessedClass> processedClasses) {
+        ProcessedClass target = processedClasses.get(field.targetEntity());
+        if (target == null) {
+            return "id";
+        }
+        return target.identifier().name();
+    }
+
+    private String getDtoSetterName(ProcessedField field) {
+        return "set" + StringUtils.capitalize(getDtoFieldName(field));
+    }
+
+    private String getDtoGetterName(ProcessedField field) {
+        return "get" + StringUtils.capitalize(getDtoFieldName(field));
+    }
+
+    private String buildRelationshipAnnotations(ProcessedField field, ProcessedClass owner,
+                                                Map<String, ProcessedClass> processedClasses) {
+        if (!field.objectField() || field.relationshipType() == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        String columnName = toSnakeCase(field.name()) + "_id";
+        switch (field.relationshipType()) {
+            case ONE_TO_ONE -> {
+                sb.append("    @OneToOne\n");
+                sb.append("    @JoinColumn(name = \"").append(columnName).append("\")\n");
+            }
+            case MANY_TO_ONE -> {
+                sb.append("    @ManyToOne\n");
+                sb.append("    @JoinColumn(name = \"").append(columnName).append("\")\n");
+            }
+            case ONE_TO_MANY -> {
+                sb.append("    @OneToMany\n");
+                sb.append("    @JoinColumn(name = \"").append(toSnakeCase(owner.entityName())).append("_id\")\n");
+            }
+            case MANY_TO_MANY -> {
+                sb.append("    @ManyToMany\n");
+                String joinTable = toSnakeCase(owner.entityName()) + "_" + toSnakeCase(field.targetEntity());
+                sb.append("    @JoinTable(name = \"").append(joinTable).append("\",\n");
+                sb.append("        joinColumns = @JoinColumn(name = \"").append(toSnakeCase(owner.entityName()))
+                    .append("_id\"),\n");
+                sb.append("        inverseJoinColumns = @JoinColumn(name = \"")
+                    .append(toSnakeCase(field.targetEntity())).append("_id\"))\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    private void appendConstructors(StringBuilder sb, String className, List<GeneratedField> fields) {
         sb.append("    public ").append(className).append("() {\n");
         sb.append("    }\n\n");
         sb.append("    public ").append(className).append("(");
         for (int i = 0; i < fields.size(); i++) {
-            ProcessedField field = fields.get(i);
+            GeneratedField field = fields.get(i);
             if (i > 0) {
                 sb.append(", ");
             }
             sb.append(field.type()).append(" ").append(field.name());
         }
         sb.append(") {\n");
-        for (ProcessedField field : fields) {
+        for (GeneratedField field : fields) {
             sb.append("        this.").append(field.name()).append(" = ").append(field.name()).append(";\n");
         }
         sb.append("    }\n\n");
     }
 
-    private void appendGettersAndSetters(StringBuilder sb, List<ProcessedField> fields) {
-        for (ProcessedField field : fields) {
+    private void appendGettersAndSetters(StringBuilder sb, List<GeneratedField> fields) {
+        for (GeneratedField field : fields) {
             String capitalized = StringUtils.capitalize(field.name());
             sb.append("    public ").append(field.type()).append(" get").append(capitalized).append("() {\n");
             sb.append("        return ").append(field.name()).append(";\n");
@@ -722,8 +920,18 @@ public class CrudScaffoldingService {
         String type,
         boolean identifier,
         boolean required,
-        boolean unique
-    ) { }
+        boolean unique,
+        boolean objectField,
+        CrudRelationshipType relationshipType,
+        String targetEntity
+    ) {
+        boolean isCollection() {
+            return objectField && (relationshipType == CrudRelationshipType.ONE_TO_MANY
+                || relationshipType == CrudRelationshipType.MANY_TO_MANY);
+        }
+    }
+
+    private record GeneratedField(String name, String type) { }
 
     private record ProcessedClass(
         String entityName,

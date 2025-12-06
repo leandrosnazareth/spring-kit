@@ -544,6 +544,13 @@ form {
     gap: 6px;
 }
 
+.object-field-config {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+}
+
 .crud-canvas-panel {
     background: #fff;
     border: 1px solid #e4e9f2;

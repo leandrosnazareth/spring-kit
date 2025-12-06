@@ -6,8 +6,21 @@ const crudFieldTypes = [
     { value: 'BigDecimal', label: 'BigDecimal' },
     { value: 'Boolean', label: 'Boolean' },
     { value: 'LocalDate', label: 'LocalDate' },
-    { value: 'LocalDateTime', label: 'LocalDateTime' }
+    { value: 'LocalDateTime', label: 'LocalDateTime' },
+    { value: 'OBJECT', label: 'Objeto (Entity)' }
 ];
+
+const relationshipTypes = [
+    { value: 'ONE_TO_ONE', label: 'One To One' },
+    { value: 'ONE_TO_MANY', label: 'One To Many' },
+    { value: 'MANY_TO_ONE', label: 'Many To One' },
+    { value: 'MANY_TO_MANY', label: 'Many To Many' }
+];
+
+const relationshipLabelMap = relationshipTypes.reduce((acc, rel) => {
+    acc[rel.value] = rel.label;
+    return acc;
+}, {});
 
 const crudState = {
     classes: [],
@@ -222,7 +235,10 @@ function addCrudClass() {
                 type: 'Long',
                 identifier: true,
                 required: true,
-                unique: true
+                unique: true,
+                objectType: false,
+                targetClassId: null,
+                relationshipType: null
             }
         ]
     };
@@ -246,6 +262,15 @@ function removeCrudClass(classId) {
     if (crudState.selectedClassId === classId) {
         crudState.selectedClassId = crudState.classes[0]?.id || null;
     }
+    crudState.classes.forEach(cls => {
+        cls.fields.forEach(field => {
+            if (field.targetClassId === classId) {
+                field.objectType = false;
+                field.targetClassId = null;
+                field.relationshipType = null;
+            }
+        });
+    });
     renderCrudClassList();
     renderCrudClassDetail();
     renderCrudCanvas();
@@ -261,7 +286,10 @@ function addAttributeToClass(classId) {
         type: 'String',
         identifier: false,
         required: false,
-        unique: false
+        unique: false,
+        objectType: false,
+        targetClassId: null,
+        relationshipType: relationshipTypes[0].value
     };
     clazz.fields.push(newField);
     renderCrudClassDetail();
@@ -374,13 +402,27 @@ function renderCrudClassDetail() {
             const option = document.createElement('option');
             option.value = type.value;
             option.textContent = type.label;
-            if (type.value === field.type) {
+            if ((field.objectType && type.value === 'OBJECT') || (!field.objectType && type.value === field.type)) {
                 option.selected = true;
             }
             typeSelect.appendChild(option);
         });
         typeSelect.addEventListener('change', e => {
-            field.type = e.target.value;
+            const value = e.target.value;
+            if (value === 'OBJECT') {
+                field.objectType = true;
+                field.type = 'OBJECT';
+                field.relationshipType = field.relationshipType || relationshipTypes[0].value;
+                if (!field.targetClassId && crudState.classes.length) {
+                    field.targetClassId = crudState.classes[0].id;
+                }
+            } else {
+                field.objectType = false;
+                field.targetClassId = null;
+                field.relationshipType = null;
+                field.type = value;
+            }
+            renderCrudClassDetail();
             renderCrudCanvas();
         });
 
@@ -408,6 +450,59 @@ function renderCrudClassDetail() {
         topRow.appendChild(nameWrapper);
         topRow.appendChild(typeWrapper);
         fieldRow.appendChild(topRow);
+
+        if (field.objectType) {
+            const objectContainer = document.createElement('div');
+            objectContainer.className = 'object-field-config';
+
+            const targetGroup = document.createElement('div');
+            targetGroup.className = 'form-group';
+            const targetLabel = document.createElement('label');
+            targetLabel.textContent = 'Classe alvo';
+            const targetSelect = document.createElement('select');
+            crudState.classes.forEach(targetClass => {
+                const option = document.createElement('option');
+                option.value = targetClass.id;
+                option.textContent = targetClass.name;
+                if (targetClass.id === field.targetClassId) {
+                    option.selected = true;
+                }
+                targetSelect.appendChild(option);
+            });
+            if (!field.targetClassId && crudState.classes.length) {
+                field.targetClassId = crudState.classes[0].id;
+                targetSelect.value = field.targetClassId;
+            }
+            targetSelect.addEventListener('change', e => {
+                field.targetClassId = e.target.value;
+            });
+            targetGroup.appendChild(targetLabel);
+            targetGroup.appendChild(targetSelect);
+
+            const relationshipGroup = document.createElement('div');
+            relationshipGroup.className = 'form-group';
+            const relationshipLabel = document.createElement('label');
+            relationshipLabel.textContent = 'Relacionamento';
+            const relationshipSelect = document.createElement('select');
+            relationshipTypes.forEach(rel => {
+                const option = document.createElement('option');
+                option.value = rel.value;
+                option.textContent = rel.label;
+                if (rel.value === field.relationshipType) {
+                    option.selected = true;
+                }
+                relationshipSelect.appendChild(option);
+            });
+            relationshipSelect.addEventListener('change', e => {
+                field.relationshipType = e.target.value;
+            });
+            relationshipGroup.appendChild(relationshipLabel);
+            relationshipGroup.appendChild(relationshipSelect);
+
+            objectContainer.appendChild(targetGroup);
+            objectContainer.appendChild(relationshipGroup);
+            fieldRow.appendChild(objectContainer);
+        }
 
         const controls = document.createElement('div');
         controls.className = 'attribute-controls';
@@ -484,6 +579,21 @@ function createCheckbox(labelText, checked, onChange) {
     return label;
 }
 
+function getClassNameById(id) {
+    const cls = crudState.classes.find(c => c.id === id);
+    return cls ? cls.name : null;
+}
+
+function describeField(field) {
+    if (!field.objectType) {
+        return `${field.name || 'campo'} : ${field.type}`;
+    }
+    const targetName = getClassNameById(field.targetClassId) || 'Objeto';
+    const label = relationshipLabelMap[field.relationshipType] || field.relationshipType || '';
+    const suffix = (field.relationshipType === 'ONE_TO_MANY' || field.relationshipType === 'MANY_TO_MANY') ? '[]' : '';
+    return `${field.name || 'campo'} : ${targetName}${suffix}${label ? ' (' + label + ')' : ''}`;
+}
+
 function renderCrudCanvas() {
     const canvas = document.getElementById('umlCanvas');
     if (!canvas) return;
@@ -510,7 +620,7 @@ function renderCrudCanvas() {
             if (field.identifier) {
                 item.classList.add('is-id');
             }
-            item.textContent = `${field.name || 'campo'} : ${field.type}`;
+            item.textContent = describeField(field);
             body.appendChild(item);
         });
 
@@ -601,13 +711,31 @@ function buildCrudPayload() {
             alert(`A classe ${className} precisa de pelo menos um atributo.`);
             return null;
         }
-        const fields = clazz.fields.map(field => ({
-            name: toCamelCase(field.name),
-            type: field.type,
-            identifier: Boolean(field.identifier),
-            required: Boolean(field.required),
-            unique: Boolean(field.unique)
-        })).filter(field => field.name);
+        const fields = [];
+        for (const field of clazz.fields) {
+            const normalizedName = toCamelCase(field.name);
+            if (!normalizedName) {
+                continue;
+            }
+            const fieldPayload = {
+                name: normalizedName,
+                type: field.type,
+                identifier: Boolean(field.identifier),
+                required: Boolean(field.required),
+                unique: Boolean(field.unique),
+                objectType: Boolean(field.objectType)
+            };
+            if (field.objectType) {
+                const targetClass = crudState.classes.find(c => c.id === field.targetClassId);
+                if (!targetClass || !targetClass.name) {
+                    alert('Existe um relacionamento sem classe alvo definida.');
+                    return null;
+                }
+                fieldPayload.targetClassName = targetClass.name;
+                fieldPayload.relationshipType = field.relationshipType || relationshipTypes[0].value;
+            }
+            fields.push(fieldPayload);
+        }
         if (!fields.length) {
             alert(`A classe ${className} precisa de atributos válidos.`);
             return null;
