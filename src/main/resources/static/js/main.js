@@ -1,3 +1,10 @@
+const structureTypeOptions = [
+    { value: 'CLASS', label: 'Classe' },
+    { value: 'ABSTRACT_CLASS', label: 'Classe Abstrata' },
+    { value: 'INTERFACE', label: 'Interface' },
+    { value: 'ENUM', label: 'Enum' }
+];
+
 const crudFieldTypes = [
     { value: 'String', label: 'String' },
     { value: 'Long', label: 'Long' },
@@ -227,6 +234,7 @@ function addCrudClass() {
         id,
         name: `Class${crudState.classes.length + 1}`,
         tableName: '',
+        structureType: 'CLASS',
         x: 40 + crudState.classes.length * 25,
         y: 40 + crudState.classes.length * 25,
         fields: [
@@ -241,7 +249,9 @@ function addCrudClass() {
                 targetClassId: null,
                 relationshipType: null
             }
-        ]
+        ],
+        methods: [],
+        enumConstants: []
     };
     crudState.classes.push(newClass);
     crudState.selectedClassId = newClass.id;
@@ -281,6 +291,8 @@ function removeCrudClass(classId) {
 function addAttributeToClass(classId) {
     const clazz = crudState.classes.find(cls => cls.id === classId);
     if (!clazz) return;
+    ensureStructureFields(clazz);
+    const isEntity = (clazz.structureType || 'CLASS') === 'CLASS';
     const newField = {
         id: crudRandomId('fld'),
         name: `field${clazz.fields.length}`,
@@ -290,7 +302,7 @@ function addAttributeToClass(classId) {
         unique: false,
         objectType: false,
         targetClassId: null,
-        relationshipType: relationshipTypes[0].value
+        relationshipType: isEntity ? relationshipTypes[0].value : null
     };
     clazz.fields.push(newField);
     renderCrudClassDetail();
@@ -305,11 +317,215 @@ function removeAttributeFromClass(classId, fieldId) {
         return;
     }
     clazz.fields = clazz.fields.filter(field => field.id !== fieldId);
-    if (!clazz.fields.some(field => field.identifier)) {
+    const isEntity = (clazz.structureType || 'CLASS') === 'CLASS';
+    if (isEntity && !clazz.fields.some(field => field.identifier)) {
         clazz.fields[0].identifier = true;
     }
     renderCrudClassDetail();
     renderCrudCanvas();
+}
+
+function ensureStructureFields(clazz) {
+    if (!clazz.structureType) {
+        clazz.structureType = 'CLASS';
+    }
+    if (!Array.isArray(clazz.methods)) {
+        clazz.methods = [];
+    }
+    if (!Array.isArray(clazz.enumConstants)) {
+        clazz.enumConstants = [];
+    }
+}
+
+function handleStructureTypeChange(clazz, newType) {
+    const previousType = clazz.structureType || 'CLASS';
+    clazz.structureType = newType;
+    if (newType !== 'CLASS') {
+        clazz.tableName = '';
+        clazz.fields.forEach(field => {
+            field.identifier = false;
+            field.objectType = false;
+            field.targetClassId = null;
+            field.relationshipType = null;
+        });
+    } else if (previousType !== 'CLASS' && clazz.fields.length) {
+        clazz.fields[0].identifier = true;
+    }
+    if (newType !== 'ENUM') {
+        clazz.enumConstants = [];
+    }
+}
+
+function addMethodToClass(classId) {
+    const clazz = crudState.classes.find(cls => cls.id === classId);
+    if (!clazz) return;
+    ensureStructureFields(clazz);
+    clazz.methods.push({
+        id: crudRandomId('mtd'),
+        name: `metodo${clazz.methods.length + 1}`,
+        returnType: 'void',
+        parameters: [],
+        abstractMethod: false,
+        defaultImplementation: false,
+        body: ''
+    });
+}
+
+function removeMethodFromClass(classId, methodId) {
+    const clazz = crudState.classes.find(cls => cls.id === classId);
+    if (!clazz || !Array.isArray(clazz.methods)) return;
+    clazz.methods = clazz.methods.filter(method => method.id !== methodId);
+}
+
+function addParameterToMethod(classId, methodId) {
+    const clazz = crudState.classes.find(cls => cls.id === classId);
+    const method = clazz?.methods?.find(m => m.id === methodId);
+    if (!method) return;
+    if (!Array.isArray(method.parameters)) {
+        method.parameters = [];
+    }
+    method.parameters.push({
+        id: crudRandomId('prm'),
+        name: `param${method.parameters.length + 1}`,
+        type: 'String'
+    });
+}
+
+function removeParameterFromMethod(classId, methodId, paramId) {
+    const clazz = crudState.classes.find(cls => cls.id === classId);
+    const method = clazz?.methods?.find(m => m.id === methodId);
+    if (!method || !Array.isArray(method.parameters)) return;
+    method.parameters = method.parameters.filter(param => param.id !== paramId);
+}
+
+function renderMethodRow(clazz, method) {
+    const structureType = clazz.structureType || 'CLASS';
+    const isInterface = structureType === 'INTERFACE';
+    const row = document.createElement('div');
+    row.className = 'method-row';
+
+    const topRow = document.createElement('div');
+    topRow.className = 'method-row-row';
+    const nameGroup = document.createElement('div');
+    nameGroup.className = 'form-group';
+    const nameLabel = document.createElement('label');
+    nameLabel.textContent = 'Nome';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = method.name || '';
+    nameInput.addEventListener('input', e => {
+        method.name = toCamelCase(e.target.value);
+        e.target.value = method.name;
+    });
+    nameGroup.appendChild(nameLabel);
+    nameGroup.appendChild(nameInput);
+
+    const returnGroup = document.createElement('div');
+    returnGroup.className = 'form-group';
+    const returnLabel = document.createElement('label');
+    returnLabel.textContent = 'Retorno';
+    const returnInput = document.createElement('input');
+    returnInput.type = 'text';
+    returnInput.value = method.returnType || 'void';
+    returnInput.addEventListener('input', e => {
+        method.returnType = e.target.value || 'void';
+    });
+    returnGroup.appendChild(returnLabel);
+    returnGroup.appendChild(returnInput);
+
+    topRow.appendChild(nameGroup);
+    topRow.appendChild(returnGroup);
+    row.appendChild(topRow);
+
+    const paramsLabel = document.createElement('label');
+    paramsLabel.textContent = 'Parâmetros';
+    row.appendChild(paramsLabel);
+    const paramsContainer = document.createElement('div');
+    paramsContainer.className = 'method-params';
+    (method.parameters || []).forEach(parameter => {
+        paramsContainer.appendChild(renderParameterRow(clazz, method, parameter));
+    });
+    const addParamBtn = document.createElement('button');
+    addParamBtn.type = 'button';
+    addParamBtn.className = 'btn btn-secondary btn-compact';
+    addParamBtn.textContent = 'Adicionar parâmetro';
+    addParamBtn.addEventListener('click', () => {
+        addParameterToMethod(clazz.id, method.id);
+        renderCrudClassDetail();
+    });
+    paramsContainer.appendChild(addParamBtn);
+    row.appendChild(paramsContainer);
+
+    const controls = document.createElement('div');
+    controls.className = 'method-controls';
+    if (isInterface) {
+        controls.appendChild(createCheckbox('Default', Boolean(method.defaultImplementation), checked => {
+            method.defaultImplementation = checked;
+        }));
+    } else {
+        controls.appendChild(createCheckbox('Abstrato', Boolean(method.abstractMethod), checked => {
+            method.abstractMethod = checked;
+        }));
+    }
+    row.appendChild(controls);
+
+    const bodyLabel = document.createElement('label');
+    bodyLabel.textContent = 'Corpo (opcional)';
+    const bodyInput = document.createElement('textarea');
+    bodyInput.rows = 3;
+    bodyInput.value = method.body || '';
+    bodyInput.addEventListener('input', e => {
+        method.body = e.target.value;
+    });
+    row.appendChild(bodyLabel);
+    row.appendChild(bodyInput);
+
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-secondary btn-compact';
+    removeBtn.textContent = 'Remover método';
+    removeBtn.addEventListener('click', () => {
+        removeMethodFromClass(clazz.id, method.id);
+        renderCrudClassDetail();
+    });
+    actions.appendChild(removeBtn);
+    row.appendChild(actions);
+
+    return row;
+}
+
+function renderParameterRow(clazz, method, parameter) {
+    const row = document.createElement('div');
+    row.className = 'parameter-row';
+    const typeInput = document.createElement('input');
+    typeInput.type = 'text';
+    typeInput.placeholder = 'Tipo';
+    typeInput.value = parameter.type || 'String';
+    typeInput.addEventListener('input', e => {
+        parameter.type = e.target.value || 'String';
+    });
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'nome';
+    nameInput.value = parameter.name || '';
+    nameInput.addEventListener('input', e => {
+        parameter.name = toCamelCase(e.target.value);
+        e.target.value = parameter.name;
+    });
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-secondary btn-compact';
+    removeBtn.textContent = 'Remover';
+    removeBtn.addEventListener('click', () => {
+        removeParameterFromMethod(clazz.id, method.id, parameter.id);
+        renderCrudClassDetail();
+    });
+    row.appendChild(typeInput);
+    row.appendChild(nameInput);
+    row.appendChild(removeBtn);
+    return row;
 }
 
 function renderCrudClassList() {
@@ -321,6 +537,7 @@ function renderCrudClassList() {
         return;
     }
     crudState.classes.forEach(clazz => {
+        ensureStructureFields(clazz);
         const item = document.createElement('div');
         item.className = 'crud-class-item';
         if (clazz.id === crudState.selectedClassId) {
@@ -329,7 +546,13 @@ function renderCrudClassList() {
         const title = document.createElement('h4');
         title.textContent = clazz.name;
         const subtitle = document.createElement('small');
-        subtitle.textContent = `${clazz.fields.length} atributos`;
+        const parts = [];
+        const typeLabel = getStructureLabel(clazz.structureType);
+        if (typeLabel) {
+            parts.push(typeLabel);
+        }
+        parts.push(`${clazz.fields.length} atributos`);
+        subtitle.textContent = parts.join(' · ');
         item.appendChild(title);
         item.appendChild(subtitle);
         item.addEventListener('click', () => selectCrudClass(clazz.id));
@@ -346,6 +569,9 @@ function renderCrudClassDetail() {
         container.innerHTML = '<p>Selecione uma classe para editar seus atributos.</p>';
         return;
     }
+    ensureStructureFields(clazz);
+    const structureType = clazz.structureType || 'CLASS';
+    const isEntity = structureType === 'CLASS';
 
     const classNameGroup = document.createElement('div');
     classNameGroup.className = 'form-group';
@@ -363,22 +589,49 @@ function renderCrudClassDetail() {
     classNameGroup.appendChild(classLabel);
     classNameGroup.appendChild(classInput);
 
+    const typeGroup = document.createElement('div');
+    typeGroup.className = 'form-group';
+    const typeLabel = document.createElement('label');
+    typeLabel.textContent = 'Tipo da Estrutura';
+    const typeSelect = document.createElement('select');
+    structureTypeOptions.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        if (opt.value === structureType) {
+            option.selected = true;
+        }
+        typeSelect.appendChild(option);
+    });
+    typeSelect.addEventListener('change', e => {
+        handleStructureTypeChange(clazz, e.target.value);
+        renderCrudClassDetail();
+        renderCrudCanvas();
+    });
+    typeGroup.appendChild(typeLabel);
+    typeGroup.appendChild(typeSelect);
+
     const tableGroup = document.createElement('div');
     tableGroup.className = 'form-group';
-    const tableLabel = document.createElement('label');
-    tableLabel.textContent = 'Nome da Tabela (opcional)';
-    const tableInput = document.createElement('input');
-    tableInput.type = 'text';
-    tableInput.placeholder = 'users';
-    tableInput.value = clazz.tableName || '';
-    tableInput.addEventListener('input', e => {
-        clazz.tableName = e.target.value;
-    });
-    tableGroup.appendChild(tableLabel);
-    tableGroup.appendChild(tableInput);
+    if (isEntity) {
+        const tableLabel = document.createElement('label');
+        tableLabel.textContent = 'Nome da Tabela (opcional)';
+        const tableInput = document.createElement('input');
+        tableInput.type = 'text';
+        tableInput.placeholder = 'users';
+        tableInput.value = clazz.tableName || '';
+        tableInput.addEventListener('input', e => {
+            clazz.tableName = e.target.value;
+        });
+        tableGroup.appendChild(tableLabel);
+        tableGroup.appendChild(tableInput);
+    }
 
     container.appendChild(classNameGroup);
-    container.appendChild(tableGroup);
+    container.appendChild(typeGroup);
+    if (isEntity) {
+        container.appendChild(tableGroup);
+    }
 
     const attrsHeader = document.createElement('h4');
     attrsHeader.textContent = 'Atributos';
@@ -507,29 +760,33 @@ function renderCrudClassDetail() {
             fieldRow.appendChild(objectContainer);
         }
 
-        const controls = document.createElement('div');
-        controls.className = 'attribute-controls';
+        if (isEntity) {
+            const controls = document.createElement('div');
+            controls.className = 'attribute-controls';
 
-        controls.appendChild(createCheckbox('Identificador', field.identifier, checked => {
-            if (!checked) {
-                field.identifier = false;
-                if (!clazz.fields.some(f => f.identifier)) {
-                    field.identifier = true;
+            controls.appendChild(createCheckbox('Identificador', field.identifier, checked => {
+                if (!checked) {
+                    field.identifier = false;
+                    if (!clazz.fields.some(f => f.identifier)) {
+                        field.identifier = true;
+                    }
+                } else {
+                    clazz.fields.forEach(f => { f.identifier = f.id === field.id; });
                 }
-            } else {
-                clazz.fields.forEach(f => { f.identifier = f.id === field.id; });
-            }
-            renderCrudClassDetail();
-            renderCrudCanvas();
-        }));
+                renderCrudClassDetail();
+                renderCrudCanvas();
+            }));
 
-        controls.appendChild(createCheckbox('Obrigatório', field.required, checked => {
-            field.required = checked;
-        }));
+            controls.appendChild(createCheckbox('Obrigatório', field.required, checked => {
+                field.required = checked;
+            }));
 
-        controls.appendChild(createCheckbox('Único', field.unique, checked => {
-            field.unique = checked;
-        }));
+            controls.appendChild(createCheckbox('Único', field.unique, checked => {
+                field.unique = checked;
+            }));
+
+            fieldRow.appendChild(controls);
+        }
 
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
@@ -541,11 +798,82 @@ function renderCrudClassDetail() {
         actions.className = 'row-actions';
         actions.appendChild(removeBtn);
 
-        fieldRow.appendChild(controls);
         fieldRow.appendChild(actions);
 
         container.appendChild(fieldRow);
     });
+
+    const methodsHeader = document.createElement('h4');
+    methodsHeader.textContent = 'Métodos';
+    container.appendChild(methodsHeader);
+    const methodsContainer = document.createElement('div');
+    methodsContainer.className = 'method-section';
+    if (!clazz.methods.length) {
+        const empty = document.createElement('p');
+        empty.style.color = '#7f8c8d';
+        empty.textContent = 'Nenhum método definido.';
+        methodsContainer.appendChild(empty);
+    } else {
+        clazz.methods.forEach(method => {
+            methodsContainer.appendChild(renderMethodRow(clazz, method));
+        });
+    }
+    const addMethodBtn = document.createElement('button');
+    addMethodBtn.type = 'button';
+    addMethodBtn.className = 'btn btn-secondary btn-compact';
+    addMethodBtn.textContent = 'Adicionar método';
+    addMethodBtn.addEventListener('click', () => {
+        addMethodToClass(clazz.id);
+        renderCrudClassDetail();
+    });
+    methodsContainer.appendChild(addMethodBtn);
+    container.appendChild(methodsContainer);
+
+    if (structureType === 'ENUM') {
+        const constantsHeader = document.createElement('h4');
+        constantsHeader.textContent = 'Constantes';
+        container.appendChild(constantsHeader);
+        const constantsWrapper = document.createElement('div');
+        constantsWrapper.className = 'enum-constants';
+        if (!clazz.enumConstants.length) {
+            const empty = document.createElement('p');
+            empty.style.color = '#7f8c8d';
+            empty.textContent = 'Nenhuma constante definida.';
+            constantsWrapper.appendChild(empty);
+        }
+        clazz.enumConstants.forEach((constant, index) => {
+            const row = document.createElement('div');
+            row.className = 'attribute-row';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = constant || '';
+            input.addEventListener('input', e => {
+                clazz.enumConstants[index] = toConstantCase(e.target.value);
+                e.target.value = clazz.enumConstants[index];
+            });
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn btn-secondary btn-compact';
+            removeBtn.textContent = 'Remover';
+            removeBtn.addEventListener('click', () => {
+                clazz.enumConstants.splice(index, 1);
+                renderCrudClassDetail();
+            });
+            row.appendChild(input);
+            row.appendChild(removeBtn);
+            constantsWrapper.appendChild(row);
+        });
+        const addConstantBtn = document.createElement('button');
+        addConstantBtn.type = 'button';
+        addConstantBtn.className = 'btn btn-secondary btn-compact';
+        addConstantBtn.textContent = 'Adicionar constante';
+        addConstantBtn.addEventListener('click', () => {
+            clazz.enumConstants.push('VALOR');
+            renderCrudClassDetail();
+        });
+        constantsWrapper.appendChild(addConstantBtn);
+        container.appendChild(constantsWrapper);
+    }
 
     const addAttributeBtn = document.createElement('button');
     addAttributeBtn.type = 'button';
@@ -597,6 +925,11 @@ function describeField(field) {
     return `${field.name || 'campo'} : ${targetName}${suffix}${label ? ' (' + label + ')' : ''}`;
 }
 
+function getStructureLabel(type) {
+    const option = structureTypeOptions.find(opt => opt.value === type);
+    return option ? option.label : '';
+}
+
 function ensureRelationshipLayer(canvas) {
     let svg = document.getElementById('relationshipLayer');
     if (svg) {
@@ -615,6 +948,7 @@ function renderCrudCanvas() {
     canvas.innerHTML = '';
     const relationshipLayer = ensureRelationshipLayer(canvas);
     crudState.classes.forEach(clazz => {
+        ensureStructureFields(clazz);
         const node = document.createElement('div');
         node.className = 'uml-node';
         if (clazz.id === crudState.selectedClassId) {
@@ -626,17 +960,22 @@ function renderCrudCanvas() {
 
         const header = document.createElement('div');
         header.className = 'uml-node-header';
+        const structureType = clazz.structureType || 'CLASS';
         const headerTitle = document.createElement('span');
-        headerTitle.textContent = clazz.name || 'Classe';
+        const typeLabel = getStructureLabel(structureType);
+        headerTitle.textContent = (clazz.name || 'Classe') + (typeLabel ? ` [${typeLabel}]` : '');
         header.appendChild(headerTitle);
-        const linkHandle = document.createElement('button');
-        linkHandle.type = 'button';
-        linkHandle.className = 'uml-link-handle';
-        linkHandle.title = 'Criar relacionamento';
-        linkHandle.addEventListener('mousedown', e => beginRelationshipDrag(e, clazz.id));
-        header.appendChild(linkHandle);
+        let linkHandle = null;
+        if (structureType === 'CLASS') {
+            linkHandle = document.createElement('button');
+            linkHandle.type = 'button';
+            linkHandle.className = 'uml-link-handle';
+            linkHandle.title = 'Criar relacionamento';
+            linkHandle.addEventListener('mousedown', e => beginRelationshipDrag(e, clazz.id));
+            header.appendChild(linkHandle);
+        }
         header.addEventListener('mousedown', e => {
-            if (e.target === linkHandle) return;
+            if (linkHandle && e.target === linkHandle) return;
             beginClassDrag(e, clazz.id);
         });
 
@@ -653,6 +992,16 @@ function renderCrudCanvas() {
 
         node.appendChild(header);
         node.appendChild(body);
+        if (clazz.methods && clazz.methods.length) {
+            const methodsList = document.createElement('ul');
+            methodsList.className = 'uml-node-fields';
+            clazz.methods.forEach(method => {
+                const item = document.createElement('li');
+                item.textContent = `${method.name || 'metodo'}()`;
+                methodsList.appendChild(item);
+            });
+            node.appendChild(methodsList);
+        }
         node.addEventListener('click', () => selectCrudClass(clazz.id));
         canvas.appendChild(node);
     });
@@ -664,8 +1013,15 @@ function renderCrudCanvas() {
 function collectRelationships() {
     const relations = [];
     crudState.classes.forEach(clazz => {
+        if ((clazz.structureType || 'CLASS') !== 'CLASS') {
+            return;
+        }
         clazz.fields.forEach(field => {
             if (field.objectType && field.targetClassId) {
+                const target = crudState.classes.find(c => c.id === field.targetClassId);
+                if (!target || (target.structureType || 'CLASS') !== 'CLASS') {
+                    return;
+                }
                 relations.push({
                     sourceId: clazz.id,
                     targetId: field.targetClassId,
@@ -801,6 +1157,10 @@ function endClassDrag() {
 function beginRelationshipDrag(event, classId) {
     event.stopPropagation();
     event.preventDefault();
+    const sourceClass = crudState.classes.find(cls => cls.id === classId);
+    if (!sourceClass || (sourceClass.structureType || 'CLASS') !== 'CLASS') {
+        return;
+    }
     const canvas = document.getElementById('umlCanvas');
     if (!canvas) return;
     const svg = document.getElementById('relationshipLayer');
@@ -871,12 +1231,14 @@ function buildCrudPayload() {
 
     const classes = [];
     for (const clazz of crudState.classes) {
+        ensureStructureFields(clazz);
+        const structureType = clazz.structureType || 'CLASS';
         const className = toPascalCase(clazz.name);
         if (!className) {
             alert('Uma das classes está sem nome válido.');
             return null;
         }
-        if (!clazz.fields.length) {
+        if (structureType === 'CLASS' && !clazz.fields.length) {
             alert(`A classe ${className} precisa de pelo menos um atributo.`);
             return null;
         }
@@ -889,14 +1251,14 @@ function buildCrudPayload() {
             const fieldPayload = {
                 name: normalizedName,
                 type: field.type,
-                identifier: Boolean(field.identifier),
+                identifier: structureType === 'CLASS' && Boolean(field.identifier),
                 required: Boolean(field.required),
                 unique: Boolean(field.unique),
-                objectType: Boolean(field.objectType)
+                objectType: structureType === 'CLASS' && Boolean(field.objectType)
             };
-            if (field.objectType) {
+            if (structureType === 'CLASS' && field.objectType) {
                 const targetClass = crudState.classes.find(c => c.id === field.targetClassId);
-                if (!targetClass || !targetClass.name) {
+                if (!targetClass || !targetClass.name || (targetClass.structureType || 'CLASS') !== 'CLASS') {
                     alert('Existe um relacionamento sem classe alvo definida.');
                     return null;
                 }
@@ -905,17 +1267,28 @@ function buildCrudPayload() {
             }
             fields.push(fieldPayload);
         }
-        if (!fields.length) {
+        if (structureType === 'CLASS' && !fields.length) {
             alert(`A classe ${className} precisa de atributos válidos.`);
             return null;
         }
-        if (!fields.some(field => field.identifier)) {
+        if (structureType === 'CLASS' && !fields.some(field => field.identifier)) {
             fields[0].identifier = true;
         }
+        const methods = (clazz.methods || [])
+            .map(method => serializeMethod(method, structureType))
+            .filter(Boolean);
+        const enumConstants = structureType === 'ENUM'
+            ? (clazz.enumConstants || [])
+                .map(value => toConstantCase(value))
+                .filter(Boolean)
+            : [];
         classes.push({
             name: className,
-            tableName: (clazz.tableName || '').trim(),
-            fields
+            tableName: structureType === 'CLASS' ? (clazz.tableName || '').trim() : '',
+            fields,
+            structureType,
+            methods,
+            enumConstants
         });
     }
 
@@ -923,6 +1296,33 @@ function buildCrudPayload() {
         moduleName,
         basePackage,
         classes
+    };
+}
+
+function serializeMethod(method, structureType) {
+    const name = toCamelCase(method.name);
+    if (!name) {
+        return null;
+    }
+    const returnType = (method.returnType || 'void').trim() || 'void';
+    const parameters = (method.parameters || [])
+        .map(param => {
+            const type = (param.type || '').trim();
+            const paramName = toCamelCase(param.name || '');
+            if (!type || !paramName) {
+                return null;
+            }
+            return { type, name: paramName };
+        })
+        .filter(Boolean);
+    const isInterface = structureType === 'INTERFACE';
+    return {
+        name,
+        returnType,
+        parameters,
+        abstractMethod: isInterface ? false : Boolean(method.abstractMethod),
+        defaultImplementation: isInterface ? Boolean(method.defaultImplementation) : false,
+        body: method.body || ''
     };
 }
 
@@ -940,6 +1340,14 @@ function toCamelCase(value) {
     const pascal = toPascalCase(value);
     if (!pascal) return '';
     return pascal.charAt(0).toLowerCase() + pascal.slice(1);
+}
+
+function toConstantCase(value) {
+    if (!value) return '';
+    return value
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .toUpperCase();
 }
 
 function crudRandomId(prefix) {
@@ -1014,6 +1422,11 @@ function createRelationshipField(sourceId, targetId, relationshipType) {
     const sourceClass = crudState.classes.find(cls => cls.id === sourceId);
     const targetClass = crudState.classes.find(cls => cls.id === targetId);
     if (!sourceClass || !targetClass) return;
+    if ((sourceClass.structureType || 'CLASS') !== 'CLASS'
+        || (targetClass.structureType || 'CLASS') !== 'CLASS') {
+        alert('Relacionamentos só podem ser criados entre classes concretas.');
+        return;
+    }
     const baseName = relationshipType === 'ONE_TO_MANY' || relationshipType === 'MANY_TO_MANY'
         ? toCamelCase(targetClass.name || 'Relacionamento') + 's'
         : toCamelCase(targetClass.name || 'Relacionamento');

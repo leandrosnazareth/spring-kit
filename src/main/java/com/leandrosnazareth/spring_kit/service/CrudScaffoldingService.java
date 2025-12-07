@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,7 +24,10 @@ import org.springframework.util.StringUtils;
 import com.leandrosnazareth.spring_kit.model.CrudClassDefinition;
 import com.leandrosnazareth.spring_kit.model.CrudFieldDefinition;
 import com.leandrosnazareth.spring_kit.model.CrudGenerationRequest;
+import com.leandrosnazareth.spring_kit.model.CrudMethodDefinition;
+import com.leandrosnazareth.spring_kit.model.CrudMethodParameterDefinition;
 import com.leandrosnazareth.spring_kit.model.CrudRelationshipType;
+import com.leandrosnazareth.spring_kit.model.CrudStructureType;
 
 @Service
 public class CrudScaffoldingService {
@@ -92,20 +96,42 @@ public class CrudScaffoldingService {
             normalizedTestPath = normalizedTestPath + "/";
         }
         boolean includeTests = request.isGenerateTests() && normalizedTestPath != null;
-        Map<String, ProcessedClass> processedClasses = new LinkedHashMap<>();
-        for (CrudClassDefinition classDefinition : request.getClasses()) {
-            ProcessedClass processedClass = prepareClass(classDefinition);
-            processedClasses.put(processedClass.entityName(), processedClass);
+        Map<String, CrudStructureType> structureLookup = new LinkedHashMap<>();
+        for (CrudClassDefinition definition : request.getClasses()) {
+            String rawName = Optional.ofNullable(definition.getName()).orElse("Structure");
+            String safeName = toPascalCase(rawName);
+            CrudStructureType type = Optional.ofNullable(definition.getStructureType())
+                .orElse(CrudStructureType.CLASS);
+            structureLookup.put(safeName, type);
         }
 
-        for (ProcessedClass processedClass : processedClasses.values()) {
+        List<ProcessedClass> processedEntities = new ArrayList<>();
+        List<SupplementalStructure> supplementalStructures = new ArrayList<>();
+        for (CrudClassDefinition definition : request.getClasses()) {
+            CrudStructureType type = Optional.ofNullable(definition.getStructureType())
+                .orElse(CrudStructureType.CLASS);
+            if (type == CrudStructureType.CLASS) {
+                processedEntities.add(prepareClass(definition, structureLookup));
+            } else {
+                supplementalStructures.add(prepareSupplementalStructure(definition, type, structureLookup));
+            }
+        }
 
-            String entityContent = buildEntity(basePackage, processedClass, useLombok, useJakarta, processedClasses);
-            String dtoContent = buildDto(basePackage, processedClass, useLombok, processedClasses);
+        Map<String, ProcessedClass> processedClassMap = processedEntities.stream()
+            .collect(Collectors.toMap(ProcessedClass::entityName, cls -> cls, (a, b) -> a, LinkedHashMap::new));
+        Map<String, String> customTypePackages = new LinkedHashMap<>();
+        processedEntities.forEach(entity -> customTypePackages.put(entity.entityName(), basePackage + ".entity"));
+        supplementalStructures.forEach(structure -> customTypePackages.put(structure.name(), basePackage + ".model"));
+
+        for (ProcessedClass processedClass : processedEntities) {
+
+            String entityContent = buildEntity(basePackage, processedClass, useLombok, useJakarta,
+                processedClassMap, customTypePackages);
+            String dtoContent = buildDto(basePackage, processedClass, useLombok, processedClassMap, customTypePackages);
             String repositoryContent = buildRepository(basePackage, processedClass);
-            String serviceContent = buildService(basePackage, processedClass, processedClasses);
+            String serviceContent = buildService(basePackage, processedClass, processedClassMap);
             String controllerContent = thymeleafViews
-                ? buildMvcController(basePackage, processedClass, processedClasses)
+                ? buildMvcController(basePackage, processedClass, processedClassMap)
                 : buildRestController(basePackage, processedClass);
 
             addFile(zos, destinationJavaBasePath + "entity/" + processedClass.entityName + ".java", entityContent);
@@ -118,19 +144,33 @@ public class CrudScaffoldingService {
                 String folder = buildControllerPath(processedClass.entityName());
                 String baseTemplateDir = normalizedTemplatePath + folder + "/";
                 addFile(zos, baseTemplateDir + "list.html", buildListTemplate(processedClass, folder));
-                addFile(zos, baseTemplateDir + "form.html", buildFormTemplate(processedClass, folder, processedClasses));
+                addFile(zos, baseTemplateDir + "form.html", buildFormTemplate(processedClass, folder, processedClassMap));
             }
 
             if (includeTests) {
                 addFile(zos, normalizedTestPath + "service/" + processedClass.serviceName() + "Test.java",
                     buildServiceTest(basePackage, processedClass));
                 addFile(zos, normalizedTestPath + "controller/" + processedClass.controllerName() + "Test.java",
-                    buildControllerTest(basePackage, processedClass, processedClasses, thymeleafViews));
+                    buildControllerTest(basePackage, processedClass, processedClassMap, thymeleafViews));
+            }
+        }
+
+        for (SupplementalStructure supplementalStructure : supplementalStructures) {
+            String targetPath = destinationJavaBasePath + "model/" + supplementalStructure.name() + ".java";
+            String content = switch (supplementalStructure.type()) {
+                case ABSTRACT_CLASS -> buildPlainClass(basePackage, supplementalStructure, useLombok, customTypePackages);
+                case INTERFACE -> buildInterface(basePackage, supplementalStructure, customTypePackages);
+                case ENUM -> buildEnum(basePackage, supplementalStructure, customTypePackages);
+                default -> "";
+            };
+            if (StringUtils.hasText(content)) {
+                addFile(zos, targetPath, content);
             }
         }
     }
 
-    private ProcessedClass prepareClass(CrudClassDefinition definition) {
+    private ProcessedClass prepareClass(CrudClassDefinition definition,
+                                        Map<String, CrudStructureType> structureLookup) {
         String rawName = Optional.ofNullable(definition.getName()).orElse("Entity");
         String entityName = toPascalCase(rawName);
         if (!StringUtils.hasText(entityName)) {
@@ -144,7 +184,10 @@ public class CrudScaffoldingService {
             ? definition.getTableName().trim()
             : toSnakeCase(entityName);
 
-        List<CrudFieldDefinition> fields = new ArrayList<>(definition.getFields());
+        List<CrudFieldDefinition> fields = new ArrayList<>();
+        if (definition.getFields() != null) {
+            fields.addAll(definition.getFields());
+        }
         CrudFieldDefinition idField = fields.stream()
             .filter(CrudFieldDefinition::isIdentifier)
             .findFirst()
@@ -161,7 +204,7 @@ public class CrudScaffoldingService {
 
         List<ProcessedField> processedFields = new ArrayList<>();
         for (CrudFieldDefinition field : fields) {
-            processedFields.add(mapField(field));
+            processedFields.add(mapField(field, structureLookup));
         }
 
         ProcessedField identifier = processedFields.stream()
@@ -181,7 +224,37 @@ public class CrudScaffoldingService {
         );
     }
 
-    private ProcessedField mapField(CrudFieldDefinition field) {
+    private SupplementalStructure prepareSupplementalStructure(CrudClassDefinition definition,
+                                                               CrudStructureType type,
+                                                               Map<String, CrudStructureType> structureLookup) {
+        String rawName = Optional.ofNullable(definition.getName()).orElse("Structure");
+        String name = toPascalCase(rawName);
+        if (!StringUtils.hasText(name)) {
+            name = "SupplementalStructure";
+        }
+        List<ProcessedField> fields = new ArrayList<>();
+        if (definition.getFields() != null) {
+            for (CrudFieldDefinition fieldDefinition : definition.getFields()) {
+                fields.add(mapField(fieldDefinition, structureLookup));
+            }
+        }
+        List<ProcessedMethod> methods = processMethods(definition.getMethods(), type);
+        List<String> enumConstants = new ArrayList<>();
+        if (definition.getEnumConstants() != null) {
+            LinkedHashSet<String> normalized = new LinkedHashSet<>();
+            for (String constant : definition.getEnumConstants()) {
+                String normalizedName = toConstantCase(constant);
+                if (StringUtils.hasText(normalizedName)) {
+                    normalized.add(normalizedName);
+                }
+            }
+            enumConstants.addAll(normalized);
+        }
+        return new SupplementalStructure(name, type, fields, methods, enumConstants);
+    }
+
+    private ProcessedField mapField(CrudFieldDefinition field,
+                                    Map<String, CrudStructureType> structureLookup) {
         String fieldName = toCamelCase(field.getName());
         if (!StringUtils.hasText(fieldName)) {
             fieldName = "field" + UUID.randomUUID().toString().replace("-", "");
@@ -192,8 +265,10 @@ public class CrudScaffoldingService {
         CrudRelationshipType relationshipType = field.getRelationshipType();
         if (objectField) {
             targetEntity = toPascalCase(Optional.ofNullable(field.getTargetClassName()).orElse(""));
-            if (!StringUtils.hasText(targetEntity)) {
+            if (!StringUtils.hasText(targetEntity)
+                || structureLookup.getOrDefault(targetEntity, CrudStructureType.CLASS) != CrudStructureType.CLASS) {
                 objectField = false;
+                targetEntity = null;
             }
             type = targetEntity;
         } else {
@@ -205,12 +280,13 @@ public class CrudScaffoldingService {
     }
 
     private String buildEntity(String basePackage, ProcessedClass processedClass, boolean useLombok,
-                               boolean useJakarta, Map<String, ProcessedClass> processedClasses) {
+                               boolean useJakarta, Map<String, ProcessedClass> processedClasses,
+                               Map<String, String> customTypePackages) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".entity;\n\n");
         String persistenceImport = useJakarta ? "jakarta.persistence" : "javax.persistence";
         sb.append("import ").append(persistenceImport).append(".*;\n");
-        Set<String> imports = resolveFieldImports(processedClass.fields());
+        Set<String> imports = resolveFieldImports(processedClass.fields(), basePackage + ".entity", customTypePackages);
         if (useLombok) {
             sb.append("import lombok.AllArgsConstructor;\n");
             sb.append("import lombok.Data;\n");
@@ -260,7 +336,8 @@ public class CrudScaffoldingService {
     }
 
     private String buildDto(String basePackage, ProcessedClass processedClass, boolean useLombok,
-                            Map<String, ProcessedClass> processedClasses) {
+                            Map<String, ProcessedClass> processedClasses,
+                            Map<String, String> customTypePackages) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".dto;\n\n");
         Set<String> imports = new TreeSet<>();
@@ -269,9 +346,13 @@ public class CrudScaffoldingService {
             sb.append("import lombok.Data;\n");
             sb.append("import lombok.NoArgsConstructor;\n");
         }
-        if (processedClass.fields().stream().anyMatch(f -> f.objectField() && f.isCollection())) {
-            imports.add("java.util.List");
-        }
+        List<GeneratedField> dtoFields = buildDtoFields(processedClass, processedClasses);
+        dtoFields.forEach(field -> {
+            if (requiresListImport(field.type())) {
+                imports.add("java.util.List");
+            }
+            addCustomImport(field.type(), basePackage + ".dto", customTypePackages, imports);
+        });
         imports.forEach(i -> sb.append("import ").append(i).append(";\n"));
         if (!imports.isEmpty()) {
             sb.append("\n");
@@ -283,7 +364,6 @@ public class CrudScaffoldingService {
         }
         sb.append("public class ").append(processedClass.dtoName()).append(" {\n\n");
 
-        List<GeneratedField> dtoFields = buildDtoFields(processedClass, processedClasses);
         for (GeneratedField field : dtoFields) {
             sb.append("    private ").append(field.type()).append(" ").append(field.name()).append(";\n");
         }
@@ -294,6 +374,99 @@ public class CrudScaffoldingService {
             appendGettersAndSetters(sb, dtoFields);
         }
 
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+    private String buildPlainClass(String basePackage, SupplementalStructure structure, boolean useLombok,
+                                   Map<String, String> customTypePackages) {
+        String packageName = basePackage + ".model";
+        StringBuilder sb = new StringBuilder();
+        sb.append("package ").append(packageName).append(";\n\n");
+        Set<String> imports = new TreeSet<>();
+        imports.addAll(resolveFieldImports(structure.fields(), packageName, customTypePackages));
+        imports.addAll(resolveMethodImports(structure.methods(), packageName, customTypePackages));
+        if (useLombok) {
+            sb.append("import lombok.AllArgsConstructor;\n");
+            sb.append("import lombok.Data;\n");
+            sb.append("import lombok.NoArgsConstructor;\n");
+        }
+        imports.forEach(i -> sb.append("import ").append(i).append(";\n"));
+        if (!imports.isEmpty()) {
+            sb.append("\n");
+        }
+        if (useLombok) {
+            sb.append("@Data\n");
+            sb.append("@NoArgsConstructor\n");
+            sb.append("@AllArgsConstructor\n");
+        }
+        sb.append("public ");
+        if (structure.type() == CrudStructureType.ABSTRACT_CLASS) {
+            sb.append("abstract ");
+        }
+        sb.append("class ").append(structure.name()).append(" {\n\n");
+
+        List<GeneratedField> fields = structure.fields().stream()
+            .map(field -> new GeneratedField(field.name(), field.type()))
+            .collect(Collectors.toList());
+        for (GeneratedField field : fields) {
+            sb.append("    private ").append(field.type()).append(" ").append(field.name()).append(";\n");
+        }
+        if (!fields.isEmpty()) {
+            sb.append("\n");
+        }
+        if (!useLombok) {
+            appendConstructors(sb, structure.name(), fields);
+            appendGettersAndSetters(sb, fields);
+        }
+        appendClassMethods(sb, structure.methods(), structure.type() == CrudStructureType.ABSTRACT_CLASS);
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+    private String buildInterface(String basePackage, SupplementalStructure structure,
+                                  Map<String, String> customTypePackages) {
+        String packageName = basePackage + ".model";
+        StringBuilder sb = new StringBuilder();
+        sb.append("package ").append(packageName).append(";\n\n");
+        Set<String> imports = new TreeSet<>();
+        imports.addAll(resolveFieldImports(structure.fields(), packageName, customTypePackages));
+        imports.addAll(resolveMethodImports(structure.methods(), packageName, customTypePackages));
+        imports.forEach(i -> sb.append("import ").append(i).append(";\n"));
+        if (!imports.isEmpty()) {
+            sb.append("\n");
+        }
+        sb.append("public interface ").append(structure.name()).append(" {\n\n");
+        for (ProcessedField field : structure.fields()) {
+            String constantName = toConstantCase(field.name());
+            String defaultValue = resolveDefaultValueLiteral(field.type());
+            sb.append("    ").append("public static final ").append(field.type())
+                .append(" ").append(constantName).append(" = ").append(defaultValue).append(";\n");
+        }
+        if (!structure.fields().isEmpty()) {
+            sb.append("\n");
+        }
+        appendInterfaceMethods(sb, structure.methods());
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+    private String buildEnum(String basePackage, SupplementalStructure structure,
+                             Map<String, String> customTypePackages) {
+        String packageName = basePackage + ".model";
+        StringBuilder sb = new StringBuilder();
+        sb.append("package ").append(packageName).append(";\n\n");
+        Set<String> imports = resolveMethodImports(structure.methods(), packageName, customTypePackages);
+        imports.forEach(i -> sb.append("import ").append(i).append(";\n"));
+        if (!imports.isEmpty()) {
+            sb.append("\n");
+        }
+        sb.append("public enum ").append(structure.name()).append(" {\n");
+        List<String> constants = structure.enumConstants().isEmpty()
+            ? List.of("DEFAULT_VALUE")
+            : structure.enumConstants();
+        sb.append("    ").append(String.join(",\n    ", constants)).append(";\n\n");
+        appendClassMethods(sb, structure.methods(), false);
         sb.append("}\n");
         return sb.toString();
     }
@@ -873,15 +1046,19 @@ public class CrudScaffoldingService {
         return "@Column(" + String.join(", ", attributes) + ")";
     }
 
-    private Set<String> resolveFieldImports(List<ProcessedField> fields) {
+    private Set<String> resolveFieldImports(List<ProcessedField> fields, String currentPackage,
+                                            Map<String, String> customTypePackages) {
         Set<String> imports = new TreeSet<>();
+        if (fields == null) {
+            return imports;
+        }
         for (ProcessedField field : fields) {
-            String importName = FIELD_IMPORTS.get(field.type());
-            if (importName != null) {
-                imports.add(importName);
-            }
-            if (field.objectField() && field.isCollection()) {
-                imports.add("java.util.List");
+            addCustomImport(field.type(), currentPackage, customTypePackages, imports);
+            if (field.objectField()) {
+                addCustomImport(field.targetEntity(), currentPackage, customTypePackages, imports);
+                if (field.isCollection()) {
+                    imports.add("java.util.List");
+                }
             }
         }
         return imports;
@@ -902,6 +1079,21 @@ public class CrudScaffoldingService {
             sb.append("Exposes RESTful controllers with JSON endpoints.\n");
         }
         return sb.toString();
+    }
+
+    private Set<String> resolveMethodImports(List<ProcessedMethod> methods, String currentPackage,
+                                             Map<String, String> customTypePackages) {
+        Set<String> imports = new TreeSet<>();
+        if (methods == null) {
+            return imports;
+        }
+        for (ProcessedMethod method : methods) {
+            addCustomImport(method.returnType(), currentPackage, customTypePackages, imports);
+            for (ProcessedParameter parameter : method.parameters()) {
+                addCustomImport(parameter.type(), currentPackage, customTypePackages, imports);
+            }
+        }
+        return imports;
     }
 
     private SampleValue resolveSampleValue(String typeName) {
@@ -1140,6 +1332,194 @@ public class CrudScaffoldingService {
         }
     }
 
+    private void appendClassMethods(StringBuilder sb, List<ProcessedMethod> methods, boolean allowAbstract) {
+        if (methods == null || methods.isEmpty()) {
+            return;
+        }
+        for (ProcessedMethod method : methods) {
+            sb.append("    public ");
+            if (allowAbstract && method.abstractMethod()) {
+                sb.append("abstract ");
+            }
+            sb.append(method.returnType()).append(" ").append(method.name())
+                .append("(").append(formatParameters(method.parameters())).append(")");
+            if (allowAbstract && method.abstractMethod()) {
+                sb.append(";\n\n");
+                continue;
+            }
+            sb.append(" {\n");
+            String body = method.body();
+            if (StringUtils.hasText(body)) {
+                sb.append(indentBody(body));
+            } else if (!isVoidReturn(method.returnType())) {
+                sb.append("        return ").append(defaultReturnValueLiteral(method.returnType())).append(";\n");
+            } else {
+                sb.append("        // TODO Auto-generated method stub\n");
+            }
+            sb.append("    }\n\n");
+        }
+    }
+
+    private void appendInterfaceMethods(StringBuilder sb, List<ProcessedMethod> methods) {
+        if (methods == null || methods.isEmpty()) {
+            return;
+        }
+        for (ProcessedMethod method : methods) {
+            sb.append("    ");
+            if (method.defaultImplementation()) {
+                sb.append("default ");
+            }
+            sb.append(method.returnType()).append(" ").append(method.name())
+                .append("(").append(formatParameters(method.parameters())).append(")");
+            if (method.defaultImplementation()) {
+                sb.append(" {\n");
+                String body = method.body();
+                if (StringUtils.hasText(body)) {
+                    sb.append(indentBody(body));
+                } else if (!isVoidReturn(method.returnType())) {
+                    sb.append("        return ").append(defaultReturnValueLiteral(method.returnType())).append(";\n");
+                } else {
+                    sb.append("        // TODO Auto-generated method stub\n");
+                }
+                sb.append("    }\n\n");
+            } else {
+                sb.append(";\n\n");
+            }
+        }
+    }
+
+    private String formatParameters(List<ProcessedParameter> parameters) {
+        if (parameters == null || parameters.isEmpty()) {
+            return "";
+        }
+        return parameters.stream()
+            .map(parameter -> parameter.type() + " " + parameter.name())
+            .collect(Collectors.joining(", "));
+    }
+
+    private boolean isVoidReturn(String type) {
+        return "void".equals(type) || "Void".equals(type);
+    }
+
+    private String defaultReturnValueLiteral(String type) {
+        String normalized = type.trim();
+        return switch (normalized) {
+            case "int", "Integer", "short", "Short", "byte", "Byte", "long", "Long" -> "0";
+            case "double", "Double" -> "0.0d";
+            case "float", "Float" -> "0.0f";
+            case "boolean", "Boolean" -> "false";
+            default -> "null";
+        };
+    }
+
+    private String resolveDefaultValueLiteral(String type) {
+        return defaultReturnValueLiteral(type);
+    }
+
+    private String indentBody(String body) {
+        String normalized = body.replace("\r\n", "\n");
+        StringBuilder result = new StringBuilder();
+        for (String line : normalized.split("\n", -1)) {
+            if (line.isEmpty()) {
+                result.append("\n");
+            } else {
+                result.append("        ").append(line).append("\n");
+            }
+        }
+        return result.toString();
+    }
+
+    private List<String> collectTypeTokens(String rawType) {
+        if (!StringUtils.hasText(rawType)) {
+            return Collections.emptyList();
+        }
+        String sanitized = rawType.replaceAll("[<>\\[\\]()]", " ");
+        List<String> tokens = new ArrayList<>();
+        for (String candidate : sanitized.split("[,\\s]+")) {
+            if (StringUtils.hasText(candidate)) {
+                tokens.add(candidate);
+            }
+        }
+        return tokens;
+    }
+
+    private void addCustomImport(String rawType, String currentPackage,
+                                 Map<String, String> customTypePackages, Set<String> imports) {
+        if (!StringUtils.hasText(rawType)) {
+            return;
+        }
+        for (String token : collectTypeTokens(rawType)) {
+            String standardImport = FIELD_IMPORTS.get(token);
+            if (standardImport != null) {
+                imports.add(standardImport);
+            }
+            if (customTypePackages != null) {
+                String targetPackage = customTypePackages.get(token);
+                if (targetPackage != null && !targetPackage.equals(currentPackage)) {
+                    imports.add(targetPackage + "." + token);
+                }
+            }
+        }
+        if (requiresListImport(rawType)) {
+            imports.add("java.util.List");
+        }
+        if (rawType.contains("Set<") || "Set".equals(rawType)) {
+            imports.add("java.util.Set");
+        }
+    }
+
+    private boolean requiresListImport(String type) {
+        return StringUtils.hasText(type)
+            && (type.contains("List<") || "List".equals(type));
+    }
+
+    private List<ProcessedMethod> processMethods(List<CrudMethodDefinition> methods,
+                                                 CrudStructureType type) {
+        if (methods == null) {
+            return Collections.emptyList();
+        }
+        List<ProcessedMethod> processed = new ArrayList<>();
+        for (CrudMethodDefinition method : methods) {
+            if (method == null) {
+                continue;
+            }
+            String name = toCamelCase(method.getName());
+            if (!StringUtils.hasText(name)) {
+                continue;
+            }
+            String returnType = Optional.ofNullable(method.getReturnType()).map(String::trim)
+                .filter(StringUtils::hasText).orElse("void");
+            List<ProcessedParameter> parameters = new ArrayList<>();
+            if (method.getParameters() != null) {
+                for (CrudMethodParameterDefinition parameter : method.getParameters()) {
+                    String paramName = toCamelCase(parameter.getName());
+                    String paramType = Optional.ofNullable(parameter.getType()).map(String::trim)
+                        .filter(StringUtils::hasText).orElse("");
+                    if (!StringUtils.hasText(paramName) || !StringUtils.hasText(paramType)) {
+                        continue;
+                    }
+                    parameters.add(new ProcessedParameter(paramName, paramType));
+                }
+            }
+            boolean defaultImplementation = type == CrudStructureType.INTERFACE
+                && method.isDefaultImplementation();
+            boolean abstractMethod = type != CrudStructureType.INTERFACE && method.isAbstractMethod();
+            String body = Optional.ofNullable(method.getBody()).orElse("").trim();
+            processed.add(new ProcessedMethod(name, returnType, parameters, abstractMethod,
+                defaultImplementation, body));
+        }
+        return processed;
+    }
+
+    private String toConstantCase(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        return value.replaceAll("[^a-zA-Z0-9]", "_")
+            .replaceAll("_+", "_")
+            .toUpperCase(Locale.ROOT);
+    }
+
     private String normalizeType(String type) {
         String candidate = Optional.ofNullable(type).orElse("String").trim();
         if (candidate.isEmpty()) {
@@ -1196,5 +1576,24 @@ public class CrudScaffoldingService {
         ProcessedField identifier,
         List<ProcessedField> fields,
         String tableName
+    ) { }
+
+    private record ProcessedParameter(String name, String type) { }
+
+    private record ProcessedMethod(
+        String name,
+        String returnType,
+        List<ProcessedParameter> parameters,
+        boolean abstractMethod,
+        boolean defaultImplementation,
+        String body
+    ) { }
+
+    private record SupplementalStructure(
+        String name,
+        CrudStructureType type,
+        List<ProcessedField> fields,
+        List<ProcessedMethod> methods,
+        List<String> enumConstants
     ) { }
 }
