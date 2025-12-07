@@ -28,6 +28,7 @@ const crudState = {
 };
 
 let crudDragState = null;
+let relationshipDragState = null;
 
 function syncArtifactToName() {
     const artifactId = document.getElementById('artifactId')?.value || '';
@@ -475,6 +476,7 @@ function renderCrudClassDetail() {
             }
             targetSelect.addEventListener('change', e => {
                 field.targetClassId = e.target.value;
+                renderRelationships();
             });
             targetGroup.appendChild(targetLabel);
             targetGroup.appendChild(targetSelect);
@@ -495,6 +497,7 @@ function renderCrudClassDetail() {
             });
             relationshipSelect.addEventListener('change', e => {
                 field.relationshipType = e.target.value;
+                renderRelationships();
             });
             relationshipGroup.appendChild(relationshipLabel);
             relationshipGroup.appendChild(relationshipSelect);
@@ -594,10 +597,23 @@ function describeField(field) {
     return `${field.name || 'campo'} : ${targetName}${suffix}${label ? ' (' + label + ')' : ''}`;
 }
 
+function ensureRelationshipLayer(canvas) {
+    let svg = document.getElementById('relationshipLayer');
+    if (svg) {
+        svg.remove();
+    }
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'relationshipLayer';
+    svg.classList.add('uml-connection-layer');
+    canvas.appendChild(svg);
+    return svg;
+}
+
 function renderCrudCanvas() {
     const canvas = document.getElementById('umlCanvas');
     if (!canvas) return;
     canvas.innerHTML = '';
+    const relationshipLayer = ensureRelationshipLayer(canvas);
     crudState.classes.forEach(clazz => {
         const node = document.createElement('div');
         node.className = 'uml-node';
@@ -610,8 +626,19 @@ function renderCrudCanvas() {
 
         const header = document.createElement('div');
         header.className = 'uml-node-header';
-        header.textContent = clazz.name || 'Classe';
-        header.addEventListener('mousedown', e => beginClassDrag(e, clazz.id));
+        const headerTitle = document.createElement('span');
+        headerTitle.textContent = clazz.name || 'Classe';
+        header.appendChild(headerTitle);
+        const linkHandle = document.createElement('button');
+        linkHandle.type = 'button';
+        linkHandle.className = 'uml-link-handle';
+        linkHandle.title = 'Criar relacionamento';
+        linkHandle.addEventListener('mousedown', e => beginRelationshipDrag(e, clazz.id));
+        header.appendChild(linkHandle);
+        header.addEventListener('mousedown', e => {
+            if (e.target === linkHandle) return;
+            beginClassDrag(e, clazz.id);
+        });
 
         const body = document.createElement('ul');
         body.className = 'uml-node-fields';
@@ -631,6 +658,87 @@ function renderCrudCanvas() {
     });
     highlightSelectedNode();
     updateCanvasVisibility();
+    renderRelationships();
+}
+
+function collectRelationships() {
+    const relations = [];
+    crudState.classes.forEach(clazz => {
+        clazz.fields.forEach(field => {
+            if (field.objectType && field.targetClassId) {
+                relations.push({
+                    sourceId: clazz.id,
+                    targetId: field.targetClassId,
+                    type: field.relationshipType || ''
+                });
+            }
+        });
+    });
+    return relations;
+}
+
+function renderRelationships() {
+    const canvas = document.getElementById('umlCanvas');
+    const svg = document.getElementById('relationshipLayer');
+    if (!canvas || !svg) return;
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+    svg.innerHTML = '';
+    addArrowMarker(svg);
+    const canvasRect = canvas.getBoundingClientRect();
+    const relations = collectRelationships();
+    relations.forEach(rel => {
+        const sourceNode = canvas.querySelector(`.uml-node[data-id="${rel.sourceId}"]`);
+        const targetNode = canvas.querySelector(`.uml-node[data-id="${rel.targetId}"]`);
+        if (!sourceNode || !targetNode) return;
+        const sourceCenter = getNodeCenter(sourceNode, canvasRect);
+        const targetCenter = getNodeCenter(targetNode, canvasRect);
+
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('class', 'relationship-line');
+        line.setAttribute('x1', sourceCenter.x);
+        line.setAttribute('y1', sourceCenter.y);
+        line.setAttribute('x2', targetCenter.x);
+        line.setAttribute('y2', targetCenter.y);
+        line.setAttribute('marker-end', 'url(#uml-arrowhead)');
+        svg.appendChild(line);
+
+        const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('class', 'relationship-label');
+        const midX = (sourceCenter.x + targetCenter.x) / 2;
+        const midY = (sourceCenter.y + targetCenter.y) / 2;
+        label.setAttribute('x', midX);
+        label.setAttribute('y', midY - 4);
+        label.textContent = relationshipLabelMap[rel.type] || rel.type;
+        svg.appendChild(label);
+    });
+}
+
+function addArrowMarker(svg) {
+    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+    marker.setAttribute('id', 'uml-arrowhead');
+    marker.setAttribute('markerWidth', '10');
+    marker.setAttribute('markerHeight', '7');
+    marker.setAttribute('refX', '10');
+    marker.setAttribute('refY', '3.5');
+    marker.setAttribute('orient', 'auto');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M0,0 L10,3.5 L0,7 Z');
+    path.setAttribute('fill', '#1abc9c');
+    marker.appendChild(path);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+}
+
+function getNodeCenter(node, canvasRect) {
+    const rect = node.getBoundingClientRect();
+    return {
+        x: rect.left - canvasRect.left + rect.width / 2,
+        y: rect.top - canvasRect.top + rect.height / 2
+    };
 }
 
 function highlightSelectedNode() {
@@ -681,12 +789,73 @@ function handleClassDrag(event) {
         node.style.left = `${clazz.x}px`;
         node.style.top = `${clazz.y}px`;
     }
+    renderRelationships();
 }
 
 function endClassDrag() {
     crudDragState = null;
     document.removeEventListener('mousemove', handleClassDrag);
     document.removeEventListener('mouseup', endClassDrag);
+}
+
+function beginRelationshipDrag(event, classId) {
+    event.stopPropagation();
+    event.preventDefault();
+    const canvas = document.getElementById('umlCanvas');
+    if (!canvas) return;
+    const svg = document.getElementById('relationshipLayer');
+    if (!svg) return;
+    const sourceNode = canvas.querySelector(`.uml-node[data-id="${classId}"]`);
+    if (!sourceNode) return;
+    const canvasRect = canvas.getBoundingClientRect();
+    const sourceCenter = getNodeCenter(sourceNode, canvasRect);
+    const tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    tempLine.setAttribute('class', 'relationship-line');
+    tempLine.setAttribute('x1', sourceCenter.x);
+    tempLine.setAttribute('y1', sourceCenter.y);
+    tempLine.setAttribute('x2', sourceCenter.x);
+    tempLine.setAttribute('y2', sourceCenter.y);
+    svg.appendChild(tempLine);
+    relationshipDragState = {
+        sourceId: classId,
+        line: tempLine,
+        start: sourceCenter,
+        canvasRect
+    };
+    document.addEventListener('mousemove', handleRelationshipDrag);
+    document.addEventListener('mouseup', endRelationshipDrag);
+}
+
+function handleRelationshipDrag(event) {
+    if (!relationshipDragState) return;
+    const { line, canvasRect, start } = relationshipDragState;
+    const x2 = event.clientX - canvasRect.left;
+    const y2 = event.clientY - canvasRect.top;
+    line.setAttribute('x1', start.x);
+    line.setAttribute('y1', start.y);
+    line.setAttribute('x2', x2);
+    line.setAttribute('y2', y2);
+}
+
+function endRelationshipDrag(event) {
+    if (!relationshipDragState) return;
+    const { line, sourceId } = relationshipDragState;
+    document.removeEventListener('mousemove', handleRelationshipDrag);
+    document.removeEventListener('mouseup', endRelationshipDrag);
+    if (line && line.parentNode) {
+        line.parentNode.removeChild(line);
+    }
+    const targetNode = event.target.closest('.uml-node');
+    if (targetNode && targetNode.dataset.id && targetNode.dataset.id !== sourceId) {
+        const type = promptRelationshipType();
+        if (type) {
+            createRelationshipField(sourceId, targetNode.dataset.id, type);
+            renderCrudClassDetail();
+            renderCrudCanvas();
+            updateCanvasVisibility();
+        }
+    }
+    relationshipDragState = null;
 }
 
 function buildCrudPayload() {
@@ -800,6 +969,7 @@ document.addEventListener('DOMContentLoaded', function() {
     updateDependencyCounter();
     initCrudBuilder();
     initTabs();
+    window.addEventListener('resize', renderRelationships);
 
     document.addEventListener('change', function(e) {
         if (e.target && e.target.matches('.dependencies-container input[type="checkbox"]')) {
@@ -824,3 +994,50 @@ document.addEventListener('DOMContentLoaded', function() {
         if (checkbox.checked) item.classList.add('selected');
     });
 });
+
+function promptRelationshipType() {
+    let message = 'Escolha o tipo de relacionamento:\n';
+    relationshipTypes.forEach((rel, index) => {
+        message += `${index + 1}. ${rel.label}\n`;
+    });
+    const response = window.prompt(message);
+    if (!response) return null;
+    const index = parseInt(response, 10) - 1;
+    if (isNaN(index) || index < 0 || index >= relationshipTypes.length) {
+        alert('Opção inválida.');
+        return null;
+    }
+    return relationshipTypes[index].value;
+}
+
+function createRelationshipField(sourceId, targetId, relationshipType) {
+    const sourceClass = crudState.classes.find(cls => cls.id === sourceId);
+    const targetClass = crudState.classes.find(cls => cls.id === targetId);
+    if (!sourceClass || !targetClass) return;
+    const baseName = relationshipType === 'ONE_TO_MANY' || relationshipType === 'MANY_TO_MANY'
+        ? toCamelCase(targetClass.name || 'Relacionamento') + 's'
+        : toCamelCase(targetClass.name || 'Relacionamento');
+    const fieldName = generateUniqueFieldName(sourceClass, baseName);
+    sourceClass.fields.push({
+        id: crudRandomId('fld'),
+        name: fieldName,
+        type: 'OBJECT',
+        identifier: false,
+        required: false,
+        unique: false,
+        objectType: true,
+        targetClassId: targetClass.id,
+        relationshipType
+    });
+}
+
+function generateUniqueFieldName(clazz, baseName) {
+    let name = baseName || 'relacao';
+    let counter = 1;
+    const existing = new Set(clazz.fields.map(field => field.name));
+    while (existing.has(name)) {
+        name = `${baseName}${counter}`;
+        counter += 1;
+    }
+    return name;
+}

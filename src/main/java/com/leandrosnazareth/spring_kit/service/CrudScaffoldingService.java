@@ -95,7 +95,7 @@ public class CrudScaffoldingService {
             String repositoryContent = buildRepository(basePackage, processedClass);
             String serviceContent = buildService(basePackage, processedClass, processedClasses);
             String controllerContent = thymeleafViews
-                ? buildMvcController(basePackage, processedClass)
+                ? buildMvcController(basePackage, processedClass, processedClasses)
                 : buildRestController(basePackage, processedClass);
 
             addFile(zos, destinationJavaBasePath + "entity/" + processedClass.entityName + ".java", entityContent);
@@ -108,7 +108,7 @@ public class CrudScaffoldingService {
                 String folder = buildControllerPath(processedClass.entityName());
                 String baseTemplateDir = normalizedTemplatePath + folder + "/";
                 addFile(zos, baseTemplateDir + "list.html", buildListTemplate(processedClass, folder));
-                addFile(zos, baseTemplateDir + "form.html", buildFormTemplate(processedClass, folder));
+                addFile(zos, baseTemplateDir + "form.html", buildFormTemplate(processedClass, folder, processedClasses));
             }
         }
     }
@@ -511,8 +511,19 @@ public class CrudScaffoldingService {
         return sb.toString();
     }
 
-    private String buildMvcController(String basePackage, ProcessedClass processedClass) {
+    private String buildMvcController(String basePackage, ProcessedClass processedClass,
+                                      Map<String, ProcessedClass> processedClasses) {
         String controllerPath = buildControllerPath(processedClass.entityName());
+        List<ProcessedField> relationshipFields = processedClass.fields().stream()
+            .filter(field -> isRenderableRelationshipField(field, processedClasses))
+            .collect(Collectors.toList());
+        Map<String, ProcessedClass> relationshipTargets = new LinkedHashMap<>();
+        for (ProcessedField field : relationshipFields) {
+            ProcessedClass target = processedClasses.get(field.targetEntity());
+            if (target != null) {
+                relationshipTargets.putIfAbsent(target.entityName(), target);
+            }
+        }
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".controller;\n\n");
         sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
@@ -524,10 +535,30 @@ public class CrudScaffoldingService {
         sb.append("@Controller\n");
         sb.append("@RequestMapping(\"/").append(controllerPath).append("\")\n");
         sb.append("public class ").append(processedClass.controllerName()).append(" {\n\n");
-        sb.append("    private final ").append(processedClass.serviceName()).append(" service;\n\n");
+        sb.append("    private final ").append(processedClass.serviceName()).append(" service;\n");
+        if (!relationshipTargets.isEmpty()) {
+            for (ProcessedClass target : relationshipTargets.values()) {
+                sb.append("    private final ").append(target.serviceName()).append(" ")
+                    .append(getServiceFieldName(target)).append(";\n");
+            }
+        }
+        sb.append("\n");
         sb.append("    public ").append(processedClass.controllerName()).append("(")
-            .append(processedClass.serviceName()).append(" service) {\n");
+            .append(processedClass.serviceName()).append(" service");
+        if (!relationshipTargets.isEmpty()) {
+            for (ProcessedClass target : relationshipTargets.values()) {
+                sb.append(", ").append(target.serviceName()).append(" ")
+                    .append(getServiceFieldName(target));
+            }
+        }
+        sb.append(") {\n");
         sb.append("        this.service = service;\n");
+        if (!relationshipTargets.isEmpty()) {
+            for (ProcessedClass target : relationshipTargets.values()) {
+                String dependencyField = getServiceFieldName(target);
+                sb.append("        this.").append(dependencyField).append(" = ").append(dependencyField).append(";\n");
+            }
+        }
         sb.append("    }\n\n");
 
         sb.append("    @GetMapping\n");
@@ -539,6 +570,9 @@ public class CrudScaffoldingService {
         sb.append("    @GetMapping(\"/create\")\n");
         sb.append("    public String showCreateForm(Model model) {\n");
         sb.append("        model.addAttribute(\"item\", new ").append(processedClass.dtoName()).append("());\n");
+        if (!relationshipFields.isEmpty()) {
+            sb.append("        populateRelationships(model);\n");
+        }
         sb.append("        return \"").append(controllerPath).append("/form\";\n");
         sb.append("    }\n\n");
 
@@ -546,6 +580,9 @@ public class CrudScaffoldingService {
         sb.append("    public String showEditForm(@PathVariable ").append(processedClass.identifier().type())
             .append(" id, Model model) {\n");
         sb.append("        model.addAttribute(\"item\", service.findById(id));\n");
+        if (!relationshipFields.isEmpty()) {
+            sb.append("        populateRelationships(model);\n");
+        }
         sb.append("        return \"").append(controllerPath).append("/form\";\n");
         sb.append("    }\n\n");
 
@@ -566,6 +603,19 @@ public class CrudScaffoldingService {
         sb.append("        service.delete(id);\n");
         sb.append("        return \"redirect:/").append(controllerPath).append("\";\n");
         sb.append("    }\n");
+        if (!relationshipFields.isEmpty()) {
+            sb.append("\n");
+            sb.append("    private void populateRelationships(Model model) {\n");
+            for (ProcessedField field : relationshipFields) {
+                ProcessedClass target = processedClasses.get(field.targetEntity());
+                if (target == null) {
+                    continue;
+                }
+                sb.append("        model.addAttribute(\"").append(getRelationshipOptionsAttributeName(field)).append("\", ")
+                    .append(getServiceFieldName(target)).append(".findAll());\n");
+            }
+            sb.append("    }\n");
+        }
 
         sb.append("}\n");
         return sb.toString();
@@ -623,7 +673,8 @@ public class CrudScaffoldingService {
         return sb.toString();
     }
 
-    private String buildFormTemplate(ProcessedClass processedClass, String controllerPath) {
+    private String buildFormTemplate(ProcessedClass processedClass, String controllerPath,
+                                     Map<String, ProcessedClass> processedClasses) {
         String idField = processedClass.identifier().name();
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html>\n");
@@ -651,7 +702,33 @@ public class CrudScaffoldingService {
                 continue;
             }
             sb.append("        <label>").append(StringUtils.capitalize(field.name())).append("</label>\n");
-            sb.append("        <input type=\"text\" th:field=\"*{").append(getDtoFieldName(field)).append("}\" />\n");
+            if (isRenderableRelationshipField(field, processedClasses)) {
+                ProcessedClass target = processedClasses.get(field.targetEntity());
+                if (target == null) {
+                    sb.append("        <input type=\"text\" th:field=\"*{").append(getDtoFieldName(field)).append("}\" />\n");
+                } else {
+                    String selectName = getDtoFieldName(field);
+                    String optionAttribute = getRelationshipOptionsAttributeName(field);
+                    String optionVar = getRelationshipOptionVariableName(field);
+                    String optionValue = optionVar + "." + target.identifier().name();
+                    String labelField = resolveTargetDisplayFieldName(target);
+                    sb.append("        <select");
+                    if (field.isCollection()) {
+                        sb.append(" multiple size=\"5\"");
+                    }
+                    sb.append(" th:field=\"*{").append(selectName).append("}\">\n");
+                    if (!field.isCollection()) {
+                        sb.append("            <option value=\"\">Selecione...</option>\n");
+                    }
+                    sb.append("            <option th:each=\"").append(optionVar).append(" : ${")
+                        .append(optionAttribute).append("}\" th:value=\"${").append(optionValue)
+                        .append("}\" th:text=\"${").append(optionVar).append(".").append(labelField)
+                        .append("}\"></option>\n");
+                    sb.append("        </select>\n");
+                }
+            } else {
+                sb.append("        <input type=\"text\" th:field=\"*{").append(getDtoFieldName(field)).append("}\" />\n");
+            }
         }
         sb.append("        <div class=\"buttons\">\n");
         sb.append("            <button type=\"submit\">Salvar</button>\n");
@@ -814,6 +891,31 @@ public class CrudScaffoldingService {
             return "id";
         }
         return target.identifier().name();
+    }
+
+    private boolean isRenderableRelationshipField(ProcessedField field,
+                                                  Map<String, ProcessedClass> processedClasses) {
+        return field.objectField() && processedClasses.containsKey(field.targetEntity());
+    }
+
+    private String getRelationshipOptionsAttributeName(ProcessedField field) {
+        return field.name() + "Options";
+    }
+
+    private String getRelationshipOptionVariableName(ProcessedField field) {
+        return field.name() + "Option";
+    }
+
+    private String getServiceFieldName(ProcessedClass processedClass) {
+        return StringUtils.uncapitalize(processedClass.serviceName());
+    }
+
+    private String resolveTargetDisplayFieldName(ProcessedClass target) {
+        return target.fields().stream()
+            .filter(f -> !f.identifier() && !f.objectField())
+            .map(ProcessedField::name)
+            .findFirst()
+            .orElse(target.identifier().name());
     }
 
     private String getDtoSetterName(ProcessedField field) {
