@@ -3,8 +3,6 @@ package com.leandrosnazareth.spring_kit.model;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
-import com.leandrosnazareth.spring_kit.model.CrudRelationshipType;
-
 @Data
 public class CrudFieldDefinition {
 

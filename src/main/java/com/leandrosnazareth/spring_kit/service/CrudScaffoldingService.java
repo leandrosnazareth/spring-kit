@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -46,6 +47,7 @@ public class CrudScaffoldingService {
                 request,
                 basePackage,
                 moduleDir + "/src/main/java/" + packagePath + "/",
+                moduleDir + "/src/test/java/" + packagePath + "/",
                 moduleDir + "/src/main/resources/templates/",
                 zos
             );
@@ -56,10 +58,12 @@ public class CrudScaffoldingService {
     }
 
     public void appendCrudToProject(CrudGenerationRequest request, String srcMainJavaBasePath,
-                                    String templatesBasePath, String basePackage, ZipOutputStream zos) throws IOException {
+                                    String srcTestJavaBasePath, String templatesBasePath,
+                                    String basePackage, ZipOutputStream zos) throws IOException {
         String sanitizedPackage = sanitizePackageName(basePackage);
         request.setBasePackage(sanitizedPackage);
-        writeCrudArtifacts(request, sanitizedPackage, srcMainJavaBasePath, templatesBasePath, zos);
+        writeCrudArtifacts(request, sanitizedPackage, srcMainJavaBasePath, srcTestJavaBasePath,
+            templatesBasePath, zos);
     }
 
     private void addFile(ZipOutputStream zos, String path, String content) throws IOException {
@@ -70,7 +74,8 @@ public class CrudScaffoldingService {
     }
 
     private void writeCrudArtifacts(CrudGenerationRequest request, String basePackage,
-                                    String destinationJavaBasePath, String destinationTemplatesPath,
+                                    String destinationJavaBasePath, String destinationTestJavaBasePath,
+                                    String destinationTemplatesPath,
                                     ZipOutputStream zos) throws IOException {
         if (request.getClasses() == null) {
             return;
@@ -82,6 +87,11 @@ public class CrudScaffoldingService {
         if (normalizedTemplatePath != null && !normalizedTemplatePath.endsWith("/")) {
             normalizedTemplatePath = normalizedTemplatePath + "/";
         }
+        String normalizedTestPath = destinationTestJavaBasePath;
+        if (normalizedTestPath != null && !normalizedTestPath.endsWith("/")) {
+            normalizedTestPath = normalizedTestPath + "/";
+        }
+        boolean includeTests = request.isGenerateTests() && normalizedTestPath != null;
         Map<String, ProcessedClass> processedClasses = new LinkedHashMap<>();
         for (CrudClassDefinition classDefinition : request.getClasses()) {
             ProcessedClass processedClass = prepareClass(classDefinition);
@@ -109,6 +119,13 @@ public class CrudScaffoldingService {
                 String baseTemplateDir = normalizedTemplatePath + folder + "/";
                 addFile(zos, baseTemplateDir + "list.html", buildListTemplate(processedClass, folder));
                 addFile(zos, baseTemplateDir + "form.html", buildFormTemplate(processedClass, folder, processedClasses));
+            }
+
+            if (includeTests) {
+                addFile(zos, normalizedTestPath + "service/" + processedClass.serviceName() + "Test.java",
+                    buildServiceTest(basePackage, processedClass));
+                addFile(zos, normalizedTestPath + "controller/" + processedClass.controllerName() + "Test.java",
+                    buildControllerTest(basePackage, processedClass, processedClasses, thymeleafViews));
             }
         }
     }
@@ -308,6 +325,7 @@ public class CrudScaffoldingService {
         if (processedClass.fields().stream().anyMatch(f -> f.objectField() && f.isCollection())) {
             sb.append("import java.util.ArrayList;\n");
         }
+        sb.append("import java.util.Collections;\n");
         sb.append("import java.util.List;\n");
         sb.append("import java.util.stream.Collectors;\n\n");
 
@@ -517,13 +535,7 @@ public class CrudScaffoldingService {
         List<ProcessedField> relationshipFields = processedClass.fields().stream()
             .filter(field -> isRenderableRelationshipField(field, processedClasses))
             .collect(Collectors.toList());
-        Map<String, ProcessedClass> relationshipTargets = new LinkedHashMap<>();
-        for (ProcessedField field : relationshipFields) {
-            ProcessedClass target = processedClasses.get(field.targetEntity());
-            if (target != null) {
-                relationshipTargets.putIfAbsent(target.entityName(), target);
-            }
-        }
+        List<ProcessedClass> relationshipTargets = resolveRelationshipDependencies(processedClass, processedClasses);
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".controller;\n\n");
         sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
@@ -537,7 +549,7 @@ public class CrudScaffoldingService {
         sb.append("public class ").append(processedClass.controllerName()).append(" {\n\n");
         sb.append("    private final ").append(processedClass.serviceName()).append(" service;\n");
         if (!relationshipTargets.isEmpty()) {
-            for (ProcessedClass target : relationshipTargets.values()) {
+            for (ProcessedClass target : relationshipTargets) {
                 sb.append("    private final ").append(target.serviceName()).append(" ")
                     .append(getServiceFieldName(target)).append(";\n");
             }
@@ -546,7 +558,7 @@ public class CrudScaffoldingService {
         sb.append("    public ").append(processedClass.controllerName()).append("(")
             .append(processedClass.serviceName()).append(" service");
         if (!relationshipTargets.isEmpty()) {
-            for (ProcessedClass target : relationshipTargets.values()) {
+            for (ProcessedClass target : relationshipTargets) {
                 sb.append(", ").append(target.serviceName()).append(" ")
                     .append(getServiceFieldName(target));
             }
@@ -554,7 +566,7 @@ public class CrudScaffoldingService {
         sb.append(") {\n");
         sb.append("        this.service = service;\n");
         if (!relationshipTargets.isEmpty()) {
-            for (ProcessedClass target : relationshipTargets.values()) {
+            for (ProcessedClass target : relationshipTargets) {
                 String dependencyField = getServiceFieldName(target);
                 sb.append("        this.").append(dependencyField).append(" = ").append(dependencyField).append(";\n");
             }
@@ -740,6 +752,113 @@ public class CrudScaffoldingService {
         return sb.toString();
     }
 
+    private String buildServiceTest(String basePackage, ProcessedClass processedClass) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("package ").append(basePackage).append(".service;\n\n");
+        sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
+        sb.append("import ").append(basePackage).append(".entity.").append(processedClass.entityName()).append(";\n");
+        sb.append("import ").append(basePackage).append(".repository.").append(processedClass.repositoryName()).append(";\n");
+        sb.append("import org.junit.jupiter.api.BeforeEach;\n");
+        sb.append("import org.junit.jupiter.api.Test;\n");
+        sb.append("import org.junit.jupiter.api.extension.ExtendWith;\n");
+        sb.append("import org.mockito.Mock;\n");
+        sb.append("import org.mockito.junit.jupiter.MockitoExtension;\n");
+        sb.append("import java.util.List;\n");
+        sb.append("import static org.assertj.core.api.Assertions.assertThat;\n");
+        sb.append("import static org.mockito.Mockito.*;\n\n");
+        sb.append("@ExtendWith(MockitoExtension.class)\n");
+        sb.append("class ").append(processedClass.serviceName()).append("Test {\n\n");
+        sb.append("    @Mock\n");
+        sb.append("    private ").append(processedClass.repositoryName()).append(" repository;\n\n");
+        sb.append("    private ").append(processedClass.serviceName()).append(" service;\n\n");
+        sb.append("    @BeforeEach\n");
+        sb.append("    void setUp() {\n");
+        sb.append("        service = new ").append(processedClass.serviceName()).append("(repository);\n");
+        sb.append("    }\n\n");
+        sb.append("    @Test\n");
+        sb.append("    void findAllShouldReturnDtoList() {\n");
+        sb.append("        ").append(processedClass.entityName()).append(" entity = new ")
+            .append(processedClass.entityName()).append("();\n");
+        sb.append("        when(repository.findAll()).thenReturn(Collections.singletonList(entity));\n\n");
+        sb.append("        List<").append(processedClass.dtoName()).append("> result = service.findAll();\n\n");
+        sb.append("        assertThat(result).hasSize(1);\n");
+        sb.append("        verify(repository).findAll();\n");
+        sb.append("    }\n");
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+    private String buildControllerTest(String basePackage, ProcessedClass processedClass,
+                                       Map<String, ProcessedClass> processedClasses,
+                                       boolean thymeleafViews) {
+        String controllerPackage = basePackage + ".controller";
+        String controllerPath = buildControllerPath(processedClass.entityName());
+        String requestPath = thymeleafViews ? "/" + controllerPath : "/api/" + controllerPath;
+        List<ProcessedClass> relationshipDependencies = resolveRelationshipDependencies(processedClass, processedClasses);
+        SampleValue sampleValue = resolveSampleValue(processedClass.identifier().type());
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("package ").append(controllerPackage).append(";\n\n");
+        sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
+        sb.append("import ").append(basePackage).append(".service.").append(processedClass.serviceName()).append(";\n");
+        for (ProcessedClass dependency : relationshipDependencies) {
+            sb.append("import ").append(basePackage).append(".service.")
+                .append(dependency.serviceName()).append(";\n");
+        }
+        if (sampleValue.importName() != null) {
+            sb.append("import ").append(sampleValue.importName()).append(";\n");
+        }
+        sb.append("import org.junit.jupiter.api.Test;\n");
+        sb.append("import org.springframework.beans.factory.annotation.Autowired;\n");
+        sb.append("import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;\n");
+        sb.append("import org.springframework.boot.test.mock.mockito.MockBean;\n");
+        sb.append("import org.springframework.test.web.servlet.MockMvc;\n");
+        sb.append("import java.util.Collections;\n");
+        sb.append("import java.util.List;\n");
+        sb.append("\n");
+        sb.append("import static org.mockito.Mockito.when;\n");
+        sb.append("import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;\n");
+        sb.append("import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;\n");
+        if (!thymeleafViews) {
+            sb.append("import static org.hamcrest.Matchers.notNullValue;\n");
+        }
+        sb.append("\n");
+        sb.append("@WebMvcTest(").append(processedClass.controllerName()).append(".class)\n");
+        sb.append("class ").append(processedClass.controllerName()).append("Test {\n\n");
+        sb.append("    @Autowired\n");
+        sb.append("    private MockMvc mockMvc;\n\n");
+        sb.append("    @MockBean\n");
+        sb.append("    private ").append(processedClass.serviceName()).append(" service;\n");
+        if (!relationshipDependencies.isEmpty()) {
+            sb.append("\n");
+            for (ProcessedClass dependency : relationshipDependencies) {
+                sb.append("    @MockBean\n");
+                sb.append("    private ").append(dependency.serviceName()).append(" ")
+                    .append(getServiceFieldName(dependency)).append(";\n");
+            }
+        }
+        sb.append("\n");
+        sb.append("    @Test\n");
+        sb.append("    void shouldListItems() throws Exception {\n");
+        sb.append("        ").append(processedClass.dtoName()).append(" dto = new ")
+            .append(processedClass.dtoName()).append("();\n");
+        sb.append("        dto.").append(getDtoSetterName(processedClass.identifier()))
+            .append("(").append(sampleValue.expression()).append(");\n");
+        sb.append("        when(service.findAll()).thenReturn(Collections.singletonList(dto));\n\n");
+        sb.append("        mockMvc.perform(get(\"").append(requestPath).append("\"))\n");
+        sb.append("            .andExpect(status().isOk())\n");
+        if (thymeleafViews) {
+            sb.append("            .andExpect(view().name(\"").append(controllerPath).append("/list\"))\n");
+            sb.append("            .andExpect(model().attributeExists(\"items\"));\n");
+        } else {
+            sb.append("            .andExpect(jsonPath(\"$[0].").append(processedClass.identifier().name())
+                .append("\").value(notNullValue()));\n");
+        }
+        sb.append("    }\n");
+        sb.append("}\n");
+        return sb.toString();
+    }
+
     private String buildColumnAnnotation(ProcessedField field) {
         List<String> attributes = new ArrayList<>();
         if (field.required()) {
@@ -783,6 +902,21 @@ public class CrudScaffoldingService {
             sb.append("Exposes RESTful controllers with JSON endpoints.\n");
         }
         return sb.toString();
+    }
+
+    private SampleValue resolveSampleValue(String typeName) {
+        return switch (typeName) {
+            case "Long" -> new SampleValue("1L", null);
+            case "Integer" -> new SampleValue("1", null);
+            case "Double" -> new SampleValue("1.0d", null);
+            case "BigDecimal" -> new SampleValue("BigDecimal.ONE", "java.math.BigDecimal");
+            case "UUID" -> new SampleValue("UUID.randomUUID()", "java.util.UUID");
+            case "LocalDate" -> new SampleValue("LocalDate.now()", "java.time.LocalDate");
+            case "LocalDateTime" -> new SampleValue("LocalDateTime.now()", "java.time.LocalDateTime");
+            case "Boolean" -> new SampleValue("Boolean.TRUE", null);
+            case "String" -> new SampleValue("\"sample-value\"", null);
+            default -> new SampleValue("1L", null);
+        };
     }
 
     private String sanitizeModuleName(String name) {
@@ -896,6 +1030,22 @@ public class CrudScaffoldingService {
     private boolean isRenderableRelationshipField(ProcessedField field,
                                                   Map<String, ProcessedClass> processedClasses) {
         return field.objectField() && processedClasses.containsKey(field.targetEntity());
+    }
+
+    private List<ProcessedClass> resolveRelationshipDependencies(ProcessedClass processedClass,
+                                                                 Map<String, ProcessedClass> processedClasses) {
+        List<ProcessedClass> dependencies = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (ProcessedField field : processedClass.fields()) {
+            if (!isRenderableRelationshipField(field, processedClasses)) {
+                continue;
+            }
+            ProcessedClass target = processedClasses.get(field.targetEntity());
+            if (target != null && seen.add(target.entityName())) {
+                dependencies.add(target);
+            }
+        }
+        return dependencies;
     }
 
     private String getRelationshipOptionsAttributeName(ProcessedField field) {
@@ -1034,6 +1184,8 @@ public class CrudScaffoldingService {
     }
 
     private record GeneratedField(String name, String type) { }
+
+    private record SampleValue(String expression, String importName) { }
 
     private record ProcessedClass(
         String entityName,

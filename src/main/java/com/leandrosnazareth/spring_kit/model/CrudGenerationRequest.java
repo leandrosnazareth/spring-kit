@@ -26,4 +26,6 @@ public class CrudGenerationRequest {
     private boolean useLombok;
 
     private boolean useJakartaPersistence = true;
+
+    private boolean generateTests;
 }

@@ -51,9 +51,12 @@ public class ProjectGeneratorService {
         // Generate application.properties
         addFileToZip(zos, srcMainResources + "application.properties", generateApplicationProperties(request));
 
-        // Generate test class
-        addFileToZip(zos, srcTestJava + capitalize(request.getName()) + "ApplicationTests.java", 
-            generateTestClass(request));
+        boolean includeTests = hasDependency(request, "test");
+        if (includeTests) {
+            addFileToZip(zos, srcTestJava + capitalize(request.getName()) + "ApplicationTests.java",
+                generateIntegrationTestClass(request));
+            addFileToZip(zos, srcTestJava + "SampleUnitTest.java", generateSampleUnitTest(request));
+        }
 
         // Generate README
         addFileToZip(zos, baseDir + "README.md", generateReadme(request));
@@ -65,7 +68,7 @@ public class ProjectGeneratorService {
         // Generate .gitignore
         addFileToZip(zos, baseDir + ".gitignore", generateGitignore(request));
 
-        appendCrudModuleIfPresent(request, srcMainJava, srcMainResources + "templates/", zos);
+        appendCrudModuleIfPresent(request, srcMainJava, srcTestJava, srcMainResources + "templates/", zos);
 
         zos.close();
         return baos.toByteArray();
@@ -79,7 +82,7 @@ public class ProjectGeneratorService {
     }
 
     private void appendCrudModuleIfPresent(ProjectRequest request, String srcMainJava,
-                                           String templatesBasePath, ZipOutputStream zos) throws IOException {
+                                           String srcTestJava, String templatesBasePath, ZipOutputStream zos) throws IOException {
         if (request.getCrudDefinition() == null || request.getCrudDefinition().isBlank()) {
             return;
         }
@@ -92,7 +95,9 @@ public class ProjectGeneratorService {
         crudRequest.setThymeleafViews(hasDependency(request, "thymeleaf"));
         crudRequest.setUseLombok(hasDependency(request, "lombok"));
         crudRequest.setUseJakartaPersistence(isJakartaPersistence(request));
-        crudScaffoldingService.appendCrudToProject(crudRequest, srcMainJava, templatesBasePath, request.getPackageName(), zos);
+        crudRequest.setGenerateTests(hasDependency(request, "test"));
+        crudScaffoldingService.appendCrudToProject(crudRequest, srcMainJava, srcTestJava, templatesBasePath,
+            request.getPackageName(), zos);
     }
 
     private boolean hasDependency(ProjectRequest request, String dependencyId) {
@@ -402,7 +407,7 @@ public class ProjectGeneratorService {
         return sb.toString();
     }
 
-    private String generateTestClass(ProjectRequest request) {
+    private String generateIntegrationTestClass(ProjectRequest request) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(request.getPackageName()).append(";\n\n");
         sb.append("import org.junit.jupiter.api.Test;\n");
@@ -411,6 +416,21 @@ public class ProjectGeneratorService {
         sb.append("class ").append(capitalize(request.getName())).append("ApplicationTests {\n\n");
         sb.append("    @Test\n");
         sb.append("    void contextLoads() {\n");
+        sb.append("    }\n");
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+    private String generateSampleUnitTest(ProjectRequest request) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("package ").append(request.getPackageName()).append(";\n\n");
+        sb.append("import org.junit.jupiter.api.Test;\n");
+        sb.append("import static org.assertj.core.api.Assertions.assertThat;\n\n");
+        sb.append("class SampleUnitTest {\n\n");
+        sb.append("    @Test\n");
+        sb.append("    void shouldAddNumbers() {\n");
+        sb.append("        int result = 1 + 1;\n");
+        sb.append("        assertThat(result).isEqualTo(2);\n");
         sb.append("    }\n");
         sb.append("}\n");
         return sb.toString();
