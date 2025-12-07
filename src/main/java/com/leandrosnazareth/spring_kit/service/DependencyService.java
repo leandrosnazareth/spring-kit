@@ -42,9 +42,9 @@ public class DependencyService {
             "Java-based template engine", 
             "org.springframework.boot", "spring-boot-starter-freemarker"));
         
-        dependencies.add(new Dependency("mustache", "Mustache", 
-            "Logic-less templates for web and standalone environments", 
-            "org.springframework.boot", "spring-boot-starter-mustache"));
+        // dependencies.add(new Dependency("mustache", "Mustache", 
+        //     "Logic-less templates for web and standalone environments", 
+        //     "org.springframework.boot", "spring-boot-starter-mustache"));
         
         // Data - SQL
         dependencies.add(new Dependency("jpa", "Spring Data JPA", 

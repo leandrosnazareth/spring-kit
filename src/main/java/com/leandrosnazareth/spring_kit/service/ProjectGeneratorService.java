@@ -58,6 +58,10 @@ public class ProjectGeneratorService {
         // Generate README
         addFileToZip(zos, baseDir + "README.md", generateReadme(request));
 
+        // Generate Dockerfile and docker-compose
+        addFileToZip(zos, baseDir + "Dockerfile", generateDockerfile(request));
+        addFileToZip(zos, baseDir + "docker-compose.yml", generateDockerCompose(request));
+
         // Generate .gitignore
         addFileToZip(zos, baseDir + ".gitignore", generateGitignore(request));
 
@@ -179,6 +183,93 @@ public class ProjectGeneratorService {
 
     private enum DatabaseType {
         H2, MYSQL, POSTGRESQL, NONE
+    }
+
+    private String generateDockerfile(ProjectRequest request) {
+        String javaVersion = request.getJavaVersion();
+        String baseImage = switch (javaVersion) {
+            case "8" -> "eclipse-temurin:8-jre";
+            case "11" -> "eclipse-temurin:11-jre";
+            case "17" -> "eclipse-temurin:17-jre";
+            case "21" -> "eclipse-temurin:21-jre";
+            default -> "eclipse-temurin:17-jre";
+        };
+
+        String jarName = request.getArtifactId() + "-0.0.1-SNAPSHOT.jar";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("FROM ").append(baseImage).append("\n");
+        sb.append("WORKDIR /app\n");
+        sb.append("COPY target/").append(jarName).append(" app.jar\n");
+        sb.append("EXPOSE 8080\n");
+        sb.append("ENTRYPOINT [\"java\",\"-jar\",\"/app/app.jar\"]\n");
+        return sb.toString();
+    }
+
+    private String generateDockerCompose(ProjectRequest request) {
+        DatabaseType dbType = resolveDatabaseType(request);
+        String projectName = request.getArtifactId();
+        String jarName = request.getArtifactId() + "-0.0.1-SNAPSHOT.jar";
+        StringBuilder sb = new StringBuilder();
+        sb.append("version: '3.8'\n");
+        sb.append("services:\n");
+        sb.append("  app:\n");
+        sb.append("    build: .\n");
+        sb.append("    container_name: ").append(projectName).append("-app\n");
+        sb.append("    environment:\n");
+        sb.append("      - SPRING_PROFILES_ACTIVE=default\n");
+        if (dbType == DatabaseType.MYSQL) {
+            sb.append("      - SPRING_DATASOURCE_URL=jdbc:mysql://db:3306/").append(projectName)
+                .append("?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true\n");
+            sb.append("      - SPRING_DATASOURCE_USERNAME=root\n");
+            sb.append("      - SPRING_DATASOURCE_PASSWORD=secret\n");
+        } else if (dbType == DatabaseType.POSTGRESQL) {
+            sb.append("      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/").append(projectName).append("\n");
+            sb.append("      - SPRING_DATASOURCE_USERNAME=postgres\n");
+            sb.append("      - SPRING_DATASOURCE_PASSWORD=secret\n");
+        }
+        sb.append("    ports:\n");
+        sb.append("      - \"8080:8080\"\n");
+        if (dbType != DatabaseType.H2 && dbType != DatabaseType.NONE) {
+            sb.append("    depends_on:\n");
+            sb.append("      - db\n");
+        }
+        sb.append("    volumes:\n");
+        sb.append("      - ./target/").append(jarName).append(":/app/").append(jarName).append("\n");
+
+        if (dbType == DatabaseType.MYSQL) {
+            sb.append("\n  db:\n");
+            sb.append("    image: mysql:8\n");
+            sb.append("    container_name: ").append(projectName).append("-db\n");
+            sb.append("    environment:\n");
+            sb.append("      - MYSQL_ROOT_PASSWORD=secret\n");
+            sb.append("      - MYSQL_DATABASE=").append(projectName).append("\n");
+            sb.append("    ports:\n");
+            sb.append("      - \"3306:3306\"\n");
+            sb.append("    volumes:\n");
+            sb.append("      - mysql_data:/var/lib/mysql\n");
+        } else if (dbType == DatabaseType.POSTGRESQL) {
+            sb.append("\n  db:\n");
+            sb.append("    image: postgres:15\n");
+            sb.append("    container_name: ").append(projectName).append("-db\n");
+            sb.append("    environment:\n");
+            sb.append("      - POSTGRES_PASSWORD=secret\n");
+            sb.append("      - POSTGRES_DB=").append(projectName).append("\n");
+            sb.append("    ports:\n");
+            sb.append("      - \"5432:5432\"\n");
+            sb.append("    volumes:\n");
+            sb.append("      - postgres_data:/var/lib/postgresql/data\n");
+        }
+
+        if (dbType == DatabaseType.MYSQL) {
+            sb.append("\nvolumes:\n");
+            sb.append("  mysql_data:\n");
+        } else if (dbType == DatabaseType.POSTGRESQL) {
+            sb.append("\nvolumes:\n");
+            sb.append("  postgres_data:\n");
+        }
+
+        return sb.toString();
     }
 
     private String generatePomXml(ProjectRequest request) {
