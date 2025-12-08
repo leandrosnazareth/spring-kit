@@ -208,34 +208,23 @@
                             <h2><i class="fa-solid fa-diagram-project"></i> CRUD Code Generator</h2>
                             <p>Desenhe suas entidades visualmente, organize atributos e elas serão incluídas automaticamente no projeto Spring ao gerar o download.</p>
                         </div>
-                        <div class="crud-builder-hint">
-                            <i class="fa-solid fa-circle-info"></i>
-                            <span>Classes serão adicionadas em <strong>Entity, DTO, Repository, Service</strong> e <strong>Controller</strong> no package configurado.</span>
+                        <div class="crud-builder-actions">
+                            <button type="button" class="btn btn-secondary btn-compact" id="addCrudClassBtn">
+                                <i class="fa-solid fa-plus"></i> Nova Classe
+                            </button>
+                            <div class="crud-builder-hint">
+                                <i class="fa-solid fa-circle-info"></i>
+                                <span>Classes serão adicionadas em <strong>Entity, DTO, Repository, Service</strong> e <strong>Controller</strong> no package configurado.</span>
+                            </div>
                         </div>
                     </div>
 
                     <div class="crud-layout">
-                        <div class="crud-sidebar">
-                            <div class="crud-sidebar-header">
-                                <div>
-                                    <h3>Classes</h3>
-                                    <p>Adicione múltiplas entidades e defina atributos.</p>
-                                </div>
-                                <button type="button" class="btn btn-secondary btn-compact" id="addCrudClassBtn">
-                                    <i class="fa-solid fa-plus"></i> Nova Classe
-                                </button>
-                            </div>
-                            <div id="crudClassList" class="crud-class-list"></div>
-                            <div id="crudClassDetail" class="crud-class-detail">
-                                <p>Selecione uma classe para editar nome, tabela e atributos. Arraste o card correspondente no canvas ao lado.</p>
-                            </div>
-                        </div>
-
                         <div class="crud-canvas-panel">
                             <div class="crud-canvas-toolbar">
                                 <div>
                                     <strong>Canvas UML</strong>
-                                    <p>Arraste os cards para organizar visualmente.</p>
+                                    <p>Arraste, edite e conecte os cartões para definir suas estruturas.</p>
                                 </div>
                                 <div class="crud-canvas-hint">
                                     <i class="fa-solid fa-layer-group"></i>
@@ -245,12 +234,12 @@
                             <div id="crudCanvasEmpty" class="crud-canvas-empty">
                                 Clique em "Nova Classe" para começar a desenhar seu diagrama.
                             </div>
-                    <div id="umlCanvas" class="uml-canvas">
-                        <svg id="relationshipLayer" class="uml-connection-layer"></svg>
+                            <div id="umlCanvas" class="uml-canvas">
+                                <svg id="relationshipLayer" class="uml-connection-layer"></svg>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </div>
-        </section>
+                </section>
             </div>
         </div>
     </div>
