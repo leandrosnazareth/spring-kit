@@ -1224,6 +1224,157 @@ function createAttributeRow(clazz, field) {
     return row;
 }
 
+function createCanvasFieldRow(clazz, field) {
+    const structureType = clazz.structureType || 'CLASS';
+    const isEntity = structureType === 'CLASS';
+    const row = document.createElement('li');
+    row.className = 'canvas-field-row';
+    if (field.identifier) {
+        row.classList.add('is-id');
+    }
+    row.addEventListener('mousedown', e => e.stopPropagation());
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'canvas-field-name';
+    nameInput.placeholder = 'nomeCampo';
+    nameInput.value = field.name || '';
+    nameInput.addEventListener('input', e => {
+        field.name = toCamelCase(e.target.value);
+        e.target.value = field.name;
+        resetWizardFeedback();
+        renderCrudClassDetail();
+    });
+
+    const typeSelect = document.createElement('select');
+    typeSelect.className = 'canvas-field-type';
+    crudFieldTypes.forEach(type => {
+        const option = document.createElement('option');
+        option.value = type.value;
+        option.textContent = type.label;
+        if ((field.objectType && type.value === 'OBJECT') || (!field.objectType && type.value === field.type)) {
+            option.selected = true;
+        }
+        typeSelect.appendChild(option);
+    });
+    typeSelect.addEventListener('change', e => {
+        const value = e.target.value;
+        if (value === 'OBJECT') {
+            field.objectType = true;
+            field.type = 'OBJECT';
+            field.relationshipType = field.relationshipType || relationshipTypes[0].value;
+            if (!field.targetClassId && crudState.classes.length) {
+                const target = crudState.classes.find(cls => (cls.structureType || 'CLASS') === 'CLASS');
+                field.targetClassId = target ? target.id : null;
+            }
+        } else {
+            field.objectType = false;
+            field.targetClassId = null;
+            field.relationshipType = null;
+            field.type = value;
+        }
+        resetWizardFeedback();
+        renderCrudClassDetail();
+        renderCrudCanvas();
+    });
+
+    row.appendChild(nameInput);
+    row.appendChild(typeSelect);
+
+    if (field.objectType) {
+        const targetSelect = document.createElement('select');
+        targetSelect.className = 'canvas-field-target';
+        crudState.classes.forEach(targetClass => {
+            if ((targetClass.structureType || 'CLASS') !== 'CLASS') return;
+            const option = document.createElement('option');
+            option.value = targetClass.id;
+            option.textContent = targetClass.name;
+            if (targetClass.id === field.targetClassId) {
+                option.selected = true;
+            }
+            targetSelect.appendChild(option);
+        });
+        targetSelect.addEventListener('change', e => {
+            field.targetClassId = e.target.value;
+            resetWizardFeedback();
+            renderCrudClassDetail();
+            renderRelationships();
+        });
+
+        const relationshipSelect = document.createElement('select');
+        relationshipSelect.className = 'canvas-field-relationship';
+        relationshipTypes.forEach(rel => {
+            const option = document.createElement('option');
+            option.value = rel.value;
+            option.textContent = rel.label;
+            if (rel.value === field.relationshipType) {
+                option.selected = true;
+            }
+            relationshipSelect.appendChild(option);
+        });
+        relationshipSelect.addEventListener('change', e => {
+            field.relationshipType = e.target.value;
+            resetWizardFeedback();
+            renderCrudClassDetail();
+            renderRelationships();
+        });
+
+        row.appendChild(targetSelect);
+        row.appendChild(relationshipSelect);
+    }
+
+    if (isEntity && !field.objectType) {
+        const flags = document.createElement('div');
+        flags.className = 'canvas-field-flags';
+        const idCheckbox = createCheckbox('ID', field.identifier, checked => {
+            if (!checked) {
+                field.identifier = false;
+                if (!clazz.fields.some(f => f.identifier)) {
+                    field.identifier = true;
+                }
+            } else {
+                clazz.fields.forEach(f => { f.identifier = f.id === field.id; });
+            }
+            resetWizardFeedback();
+            renderCrudClassDetail();
+            renderCrudCanvas();
+        });
+        idCheckbox.classList.add('canvas-checkbox');
+        idCheckbox.addEventListener('mousedown', e => e.stopPropagation());
+        flags.appendChild(idCheckbox);
+        const requiredCheckbox = createCheckbox('Req.', field.required, checked => {
+            field.required = checked;
+            resetWizardFeedback();
+        });
+        requiredCheckbox.classList.add('canvas-checkbox');
+        requiredCheckbox.addEventListener('mousedown', e => e.stopPropagation());
+        flags.appendChild(requiredCheckbox);
+        const uniqueCheckbox = createCheckbox('Único', field.unique, checked => {
+            field.unique = checked;
+            resetWizardFeedback();
+        });
+        uniqueCheckbox.classList.add('canvas-checkbox');
+        uniqueCheckbox.addEventListener('mousedown', e => e.stopPropagation());
+        flags.appendChild(uniqueCheckbox);
+        row.appendChild(flags);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'canvas-field-actions';
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-secondary btn-compact';
+    removeBtn.textContent = 'Excluir';
+    removeBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        resetWizardFeedback();
+        removeAttributeFromClass(clazz.id, field.id);
+    });
+    actions.appendChild(removeBtn);
+    row.appendChild(actions);
+    return row;
+}
+
 function renderEnumSection(clazz) {
     const container = document.createElement('div');
     container.className = 'enum-section';
@@ -1338,10 +1489,40 @@ function renderCrudCanvas() {
         const header = document.createElement('div');
         header.className = 'uml-node-header';
         const structureType = clazz.structureType || 'CLASS';
-        const headerTitle = document.createElement('span');
         const typeLabel = getStructureLabel(structureType);
-        headerTitle.textContent = (clazz.name || 'Classe') + (typeLabel ? ` [${typeLabel}]` : '');
+        const headerTitle = document.createElement('span');
+        headerTitle.className = 'uml-node-title';
+        headerTitle.contentEditable = true;
+        headerTitle.spellcheck = false;
+        headerTitle.textContent = clazz.name || 'Classe';
+        headerTitle.addEventListener('mousedown', e => e.stopPropagation());
+        headerTitle.addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                headerTitle.blur();
+            }
+        });
+        headerTitle.addEventListener('blur', () => {
+            const newName = toPascalCase(headerTitle.textContent);
+            if (!newName) {
+                headerTitle.textContent = clazz.name || 'Classe';
+                return;
+            }
+            if (newName !== clazz.name) {
+                clazz.name = newName;
+                renderCrudClassList();
+                renderCrudClassDetail();
+                renderRelationships();
+            }
+            headerTitle.textContent = clazz.name;
+        });
         header.appendChild(headerTitle);
+        if (typeLabel) {
+            const badge = document.createElement('span');
+            badge.className = 'uml-node-badge';
+            badge.textContent = typeLabel;
+            header.appendChild(badge);
+        }
         let linkHandle = null;
         if (structureType === 'CLASS') {
             linkHandle = document.createElement('button');
@@ -1359,13 +1540,20 @@ function renderCrudCanvas() {
         const body = document.createElement('ul');
         body.className = 'uml-node-fields';
         clazz.fields.forEach(field => {
-            const item = document.createElement('li');
-            if (field.identifier) {
-                item.classList.add('is-id');
-            }
-            item.textContent = describeField(field);
-            body.appendChild(item);
+            body.appendChild(createCanvasFieldRow(clazz, field));
         });
+        const addRow = document.createElement('li');
+        addRow.className = 'canvas-field-row canvas-field-add';
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'uml-inline-btn';
+        addBtn.textContent = '+ Atributo';
+        addBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            addAttributeToClass(clazz.id);
+        });
+        addRow.appendChild(addBtn);
+        body.appendChild(addRow);
 
         node.appendChild(header);
         node.appendChild(body);

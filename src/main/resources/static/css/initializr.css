@@ -816,6 +816,95 @@ form {
     cursor: pointer;
 }
 
+.uml-node-title {
+    font-weight: 600;
+    flex: 1;
+    min-width: 0;
+}
+
+.uml-node-badge {
+    font-size: 0.75em;
+    color: #4f8ef7;
+    background: #eef4ff;
+    border-radius: 999px;
+    padding: 2px 8px;
+    margin-left: 8px;
+    white-space: nowrap;
+}
+
+.canvas-field-row {
+    list-style: none;
+    margin: 6px 0;
+    padding: 8px;
+    border: 1px solid #e1e8ff;
+    border-radius: 10px;
+    background: #fdfefe;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.canvas-field-row input,
+.canvas-field-row select {
+    width: 100%;
+    border: 1px solid #ccd6f6;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 0.9em;
+}
+
+.canvas-field-row.is-id {
+    border-color: #27ae60;
+}
+
+.canvas-field-add {
+    border: none;
+    background: transparent;
+    padding: 0;
+}
+
+.canvas-field-flags {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.canvas-checkbox {
+    font-size: 0.8em;
+    color: #546b9e;
+    background: #f5f7ff;
+    padding: 4px 6px;
+    border-radius: 6px;
+}
+
+.canvas-field-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.canvas-field-target,
+.canvas-field-relationship {
+    margin-top: 4px;
+}
+
+.canvas-field-name {
+    font-weight: 600;
+}
+
+.canvas-field-type {
+    font-size: 0.85em;
+}
+
+.uml-inline-btn {
+    width: 100%;
+    border: 1px dashed #a8bdeb;
+    background: #f7f9ff;
+    border-radius: 8px;
+    padding: 6px;
+    font-size: 0.85em;
+    color: #4f6bbf;
+}
+
 .uml-node.selected {
     border-color: #1abc9c;
     box-shadow: 0 15px 50px rgba(26, 188, 156, 0.35);
@@ -850,18 +939,8 @@ form {
 }
 
 .uml-node-fields li {
-    padding: 6px 0;
-    border-bottom: 1px solid #f1f4fb;
-    font-size: 0.9em;
-}
-
-.uml-node-fields li:last-child {
-    border-bottom: none;
-}
-
-.uml-node-fields li.is-id {
-    font-weight: 600;
-    color: #2c3e50;
+    padding: 0;
+    border: none;
 }
 
 .attribute-row .row-actions {
