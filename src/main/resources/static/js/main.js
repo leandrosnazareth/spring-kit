@@ -449,8 +449,9 @@ function renderMethodRow(clazz, method) {
     });
     const addParamBtn = document.createElement('button');
     addParamBtn.type = 'button';
-    addParamBtn.className = 'btn btn-secondary btn-compact';
-    addParamBtn.textContent = 'Adicionar parâmetro';
+    addParamBtn.className = 'btn btn-secondary btn-compact btn-icon';
+    addParamBtn.innerHTML = '<i class="fa-solid fa-plus"></i>';
+    addParamBtn.title = 'Adicionar parâmetro';
     addParamBtn.addEventListener('click', () => {
         addParameterToMethod(clazz.id, method.id);
     });
@@ -485,8 +486,9 @@ function renderMethodRow(clazz, method) {
     actions.className = 'row-actions';
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
-    removeBtn.className = 'btn btn-secondary btn-compact';
-    removeBtn.textContent = 'Remover método';
+    removeBtn.className = 'btn btn-secondary btn-compact btn-icon';
+    removeBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+    removeBtn.title = 'Remover método';
     removeBtn.addEventListener('click', () => {
         removeMethodFromClass(clazz.id, method.id);
     });
@@ -517,8 +519,9 @@ function renderParameterRow(clazz, method, parameter) {
     });
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
-    removeBtn.className = 'btn btn-secondary btn-compact';
-    removeBtn.textContent = 'Remover';
+    removeBtn.className = 'btn btn-secondary btn-compact btn-icon';
+    removeBtn.innerHTML = '<i class="fa-solid fa-minus"></i>';
+    removeBtn.title = 'Remover parâmetro';
     removeBtn.addEventListener('click', () => {
         removeParameterFromMethod(clazz.id, method.id, parameter.id);
     });
@@ -660,8 +663,9 @@ function createCanvasFieldRow(clazz, field) {
     actions.className = 'canvas-field-actions';
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
-    removeBtn.className = 'btn btn-secondary btn-compact';
-    removeBtn.textContent = 'Excluir';
+    removeBtn.className = 'btn btn-secondary btn-compact btn-icon';
+    removeBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+    removeBtn.title = 'Excluir atributo';
     removeBtn.addEventListener('click', e => {
         e.stopPropagation();
         removeAttributeFromClass(clazz.id, field.id);
@@ -681,8 +685,9 @@ function createCanvasEnumSection(clazz) {
     title.textContent = 'Constantes do Enum';
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
-    addBtn.className = 'btn btn-secondary btn-compact';
-    addBtn.textContent = 'Adicionar';
+    addBtn.className = 'btn btn-secondary btn-compact btn-icon';
+    addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>';
+    addBtn.title = 'Adicionar constante';
     addBtn.addEventListener('click', e => {
         e.stopPropagation();
         clazz.enumConstants.push('NOVO_VALOR');
@@ -713,8 +718,9 @@ function createCanvasEnumSection(clazz) {
             });
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
-            removeBtn.className = 'btn btn-secondary btn-compact';
-            removeBtn.textContent = 'Remover';
+            removeBtn.className = 'btn btn-secondary btn-compact btn-icon';
+            removeBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+            removeBtn.title = 'Remover constante';
             removeBtn.addEventListener('click', () => {
                 clazz.enumConstants.splice(index, 1);
                 renderCrudCanvas();
@@ -874,8 +880,9 @@ function renderCrudCanvas() {
         fieldTitle.textContent = 'Atributos';
         const addFieldBtn = document.createElement('button');
         addFieldBtn.type = 'button';
-        addFieldBtn.className = 'btn btn-secondary btn-compact';
-        addFieldBtn.textContent = 'Adicionar';
+        addFieldBtn.className = 'btn btn-secondary btn-compact btn-icon';
+        addFieldBtn.innerHTML = '<i class="fa-solid fa-plus"></i>';
+        addFieldBtn.title = 'Adicionar atributo';
         addFieldBtn.addEventListener('click', e => {
             e.stopPropagation();
             addAttributeToClass(clazz.id);
@@ -906,8 +913,9 @@ function renderCrudCanvas() {
         actions.className = 'uml-node-actions';
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
-        deleteBtn.className = 'btn btn-secondary btn-compact';
-        deleteBtn.textContent = 'Excluir classe';
+        deleteBtn.className = 'btn btn-secondary btn-compact btn-icon';
+        deleteBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+        deleteBtn.title = 'Excluir classe';
         deleteBtn.addEventListener('click', e => {
             e.stopPropagation();
             removeCrudClass(clazz.id);
@@ -980,8 +988,9 @@ function createMethodsSection(clazz) {
     title.textContent = 'Métodos';
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
-    addBtn.className = 'btn btn-secondary btn-compact';
-    addBtn.textContent = 'Adicionar';
+    addBtn.className = 'btn btn-secondary btn-compact btn-icon';
+    addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>';
+    addBtn.title = 'Adicionar método';
     addBtn.addEventListener('click', e => {
         e.stopPropagation();
         addMethodToClass(clazz.id);

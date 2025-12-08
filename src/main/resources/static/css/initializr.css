@@ -403,6 +403,20 @@ form {
     font-size: 0.9em;
 }
 
+.btn-icon {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.btn-icon i {
+    pointer-events: none;
+}
+
 .crud-builder {
     padding: 10px 0 0;
     background: #f7f9fc;
