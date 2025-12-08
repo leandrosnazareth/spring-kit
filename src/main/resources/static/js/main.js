@@ -229,6 +229,7 @@ function addCrudClass() {
         name: `Class${crudState.classes.length + 1}`,
         tableName: '',
         structureType: 'CLASS',
+        collapsed: false,
         x: 40 + crudState.classes.length * 25,
         y: 40 + crudState.classes.length * 25,
         fields: [
@@ -319,6 +320,9 @@ function ensureStructureFields(clazz) {
     }
     if (!Array.isArray(clazz.enumConstants)) {
         clazz.enumConstants = [];
+    }
+    if (typeof clazz.collapsed !== 'boolean') {
+        clazz.collapsed = false;
     }
 }
 
@@ -768,6 +772,9 @@ function renderCrudCanvas() {
         if (clazz.id === crudState.selectedClassId) {
             node.classList.add('selected');
         }
+        if (clazz.collapsed) {
+            node.classList.add('collapsed');
+        }
         node.dataset.id = clazz.id;
         node.style.left = `${clazz.x || 40}px`;
         node.style.top = `${clazz.y || 40}px`;
@@ -775,6 +782,8 @@ function renderCrudCanvas() {
         const header = document.createElement('div');
         header.className = 'uml-node-header';
         const structureType = clazz.structureType || 'CLASS';
+        const headerContent = document.createElement('div');
+        headerContent.className = 'uml-header-content';
         const headerTitle = document.createElement('span');
         headerTitle.className = 'uml-node-title';
         headerTitle.contentEditable = true;
@@ -799,14 +808,28 @@ function renderCrudCanvas() {
             }
             headerTitle.textContent = clazz.name;
         });
-        header.appendChild(headerTitle);
+        headerContent.appendChild(headerTitle);
         const typeLabel = getStructureLabel(structureType);
         if (typeLabel) {
             const badge = document.createElement('span');
             badge.className = 'uml-node-badge';
             badge.textContent = typeLabel;
-            header.appendChild(badge);
+            headerContent.appendChild(badge);
         }
+        header.appendChild(headerContent);
+        const headerActions = document.createElement('div');
+        headerActions.className = 'uml-header-actions';
+        const collapseBtn = document.createElement('button');
+        collapseBtn.type = 'button';
+        collapseBtn.className = 'uml-collapse-btn';
+        collapseBtn.title = clazz.collapsed ? 'Expandir classe' : 'Minimizar classe';
+        collapseBtn.innerHTML = `<i class="fa-solid ${clazz.collapsed ? 'fa-chevron-down' : 'fa-chevron-up'}"></i>`;
+        collapseBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            clazz.collapsed = !clazz.collapsed;
+            renderCrudCanvas();
+        });
+        headerActions.appendChild(collapseBtn);
         let linkHandle = null;
         if (structureType === 'CLASS') {
             linkHandle = document.createElement('button');
@@ -814,15 +837,21 @@ function renderCrudCanvas() {
             linkHandle.className = 'uml-link-handle';
             linkHandle.title = 'Criar relacionamento';
             linkHandle.addEventListener('mousedown', e => beginRelationshipDrag(e, clazz.id));
-            header.appendChild(linkHandle);
+            headerActions.appendChild(linkHandle);
         }
+        header.appendChild(headerActions);
         header.addEventListener('mousedown', e => {
-            if (linkHandle && e.target === linkHandle) return;
+            if (e.target.closest('.uml-collapse-btn') || e.target.closest('.uml-link-handle')) {
+                return;
+            }
             beginClassDrag(e, clazz.id);
         });
         node.appendChild(header);
 
-        node.appendChild(buildStructureControls(clazz));
+        const nodeBody = document.createElement('div');
+        nodeBody.className = 'uml-node-body';
+
+        nodeBody.appendChild(buildStructureControls(clazz));
 
         const fieldSection = document.createElement('div');
         fieldSection.className = 'uml-node-section';
@@ -852,13 +881,13 @@ function renderCrudCanvas() {
             clazz.fields.forEach(field => fieldList.appendChild(createCanvasFieldRow(clazz, field)));
         }
         fieldSection.appendChild(fieldList);
-        node.appendChild(fieldSection);
+        nodeBody.appendChild(fieldSection);
 
         if ((clazz.structureType || 'CLASS') === 'ENUM') {
-            node.appendChild(createCanvasEnumSection(clazz));
+            nodeBody.appendChild(createCanvasEnumSection(clazz));
         }
 
-        node.appendChild(createMethodsSection(clazz));
+        nodeBody.appendChild(createMethodsSection(clazz));
 
         const actions = document.createElement('div');
         actions.className = 'uml-node-actions';
@@ -871,7 +900,8 @@ function renderCrudCanvas() {
             removeCrudClass(clazz.id);
         });
         actions.appendChild(deleteBtn);
-        node.appendChild(actions);
+        nodeBody.appendChild(actions);
+        node.appendChild(nodeBody);
 
         node.addEventListener('click', () => selectCrudClass(clazz.id));
         canvas.appendChild(node);

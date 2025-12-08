@@ -552,6 +552,15 @@ form {
     cursor: pointer;
 }
 
+.uml-node-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.uml-node.collapsed .uml-node-body {
+    display: none;
+}
+
 .uml-node-title {
     font-weight: 600;
     flex: 1;
@@ -738,6 +747,40 @@ form {
     justify-content: space-between;
     align-items: center;
     font-size: 0.95em;
+}
+
+.uml-node.collapsed .uml-node-header {
+    border-radius: 14px;
+}
+
+.uml-header-content {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+}
+
+.uml-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.uml-collapse-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.uml-collapse-btn:hover {
+    background: rgba(255, 255, 255, 0.45);
 }
 
 .uml-link-handle {
