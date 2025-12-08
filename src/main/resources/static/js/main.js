@@ -578,8 +578,10 @@ function createCanvasFieldRow(clazz, field) {
         renderCrudCanvas();
     });
 
-    row.appendChild(nameInput);
-    row.appendChild(typeSelect);
+    const mainRow = document.createElement('div');
+    mainRow.className = 'canvas-field-main';
+    mainRow.appendChild(nameInput);
+    mainRow.appendChild(typeSelect);
 
     if (field.objectType) {
         const targetSelect = document.createElement('select');
@@ -615,10 +617,13 @@ function createCanvasFieldRow(clazz, field) {
             renderCrudCanvas();
         });
 
-        row.appendChild(targetSelect);
-        row.appendChild(relationshipSelect);
+        mainRow.appendChild(targetSelect);
+        mainRow.appendChild(relationshipSelect);
     }
+    row.appendChild(mainRow);
 
+    const metaRow = document.createElement('div');
+    metaRow.className = 'canvas-field-meta';
     if (isEntity && !field.objectType) {
         const flags = document.createElement('div');
         flags.className = 'canvas-field-flags';
@@ -648,7 +653,7 @@ function createCanvasFieldRow(clazz, field) {
         uniqueCheckbox.classList.add('canvas-checkbox');
         uniqueCheckbox.addEventListener('mousedown', e => e.stopPropagation());
         flags.appendChild(uniqueCheckbox);
-        row.appendChild(flags);
+        metaRow.appendChild(flags);
     }
 
     const actions = document.createElement('div');
@@ -662,7 +667,8 @@ function createCanvasFieldRow(clazz, field) {
         removeAttributeFromClass(clazz.id, field.id);
     });
     actions.appendChild(removeBtn);
-    row.appendChild(actions);
+    metaRow.appendChild(actions);
+    row.appendChild(metaRow);
     return row;
 }
 

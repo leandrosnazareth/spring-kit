@@ -544,12 +544,13 @@ form {
 
 .uml-node {
     position: absolute;
-    width: 320px;
+    width: 300px;
     background: #fff;
     border: 1px solid #d0dbff;
     border-radius: 14px;
-    box-shadow: 0 12px 30px rgba(31, 56, 114, 0.15);
+    box-shadow: 0 8px 20px rgba(31, 56, 114, 0.12);
     cursor: pointer;
+    font-size: 0.92em;
 }
 
 .uml-node-body {
@@ -580,7 +581,7 @@ form {
 .canvas-field-row {
     list-style: none;
     margin: 6px 0;
-    padding: 8px;
+    padding: 8px 10px;
     border: 1px solid #e1e8ff;
     border-radius: 10px;
     background: #fdfefe;
@@ -589,13 +590,28 @@ form {
     gap: 6px;
 }
 
+.canvas-field-main {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    align-items: center;
+}
+
+.canvas-field-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .uml-node-meta {
-    padding: 12px 16px;
+    padding: 10px 12px;
     border-bottom: 1px solid #eef2ff;
     background: #f9fbff;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .uml-control-group {
@@ -611,22 +627,23 @@ form {
 }
 
 .uml-node-section {
-    padding: 12px 16px 16px;
+    padding: 10px 12px 12px;
     border-top: 1px solid #eef2ff;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
 }
 
 .section-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 10px;
 }
 
 .section-header h4 {
     margin: 0;
-    font-size: 0.95em;
+    font-size: 0.9em;
     color: #2c3e50;
 }
 
@@ -634,23 +651,24 @@ form {
 .enum-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .method-row {
     border: 1px solid #e1e8ff;
     border-radius: 12px;
-    padding: 10px;
+    padding: 8px 10px;
     background: #fbfdff;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
 }
 
 .method-row-row {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+    align-items: center;
 }
 
 .method-params {
@@ -661,7 +679,7 @@ form {
 
 .parameter-row {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    grid-template-columns: repeat(2, minmax(120px, 1fr)) 32px;
     gap: 6px;
     align-items: center;
 }
@@ -670,17 +688,17 @@ form {
     width: 100%;
     border: 1px solid #ccd6f6;
     border-radius: 6px;
-    padding: 4px 8px;
+    padding: 4px 6px;
 }
 
 .enum-row {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     align-items: center;
 }
 
 .uml-node-actions {
-    padding: 12px 16px 16px;
+    padding: 10px 12px 12px;
     border-top: 1px solid #eef2ff;
     display: flex;
     justify-content: flex-end;
@@ -691,8 +709,8 @@ form {
     width: 100%;
     border: 1px solid #ccd6f6;
     border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 0.9em;
+    padding: 4px 6px;
+    font-size: 0.85em;
 }
 
 .canvas-field-row.is-id {
@@ -701,7 +719,7 @@ form {
 
 .canvas-field-flags {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     flex-wrap: wrap;
 }
 
@@ -737,7 +755,7 @@ form {
 }
 
 .uml-node-header {
-    padding: 12px 16px;
+    padding: 10px 12px;
     background: #4f8ef7;
     color: #fff;
     border-radius: 14px 14px 0 0;
