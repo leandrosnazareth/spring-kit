@@ -29,6 +29,13 @@ const relationshipLabelMap = relationshipTypes.reduce((acc, rel) => {
     return acc;
 }, {});
 
+const canvasInteractiveSelector = 'input, select, textarea, button, [contenteditable="true"], .canvas-field-row, .method-row, .enum-row';
+
+function isCanvasInteractiveElement(target) {
+    if (!target) return false;
+    return Boolean(target.closest(canvasInteractiveSelector));
+}
+
 const crudState = {
     classes: [],
     selectedClassId: null
@@ -903,7 +910,12 @@ function renderCrudCanvas() {
         nodeBody.appendChild(actions);
         node.appendChild(nodeBody);
 
-        node.addEventListener('click', () => selectCrudClass(clazz.id));
+        node.addEventListener('click', e => {
+            if (isCanvasInteractiveElement(e.target)) {
+                return;
+            }
+            selectCrudClass(clazz.id);
+        });
         canvas.appendChild(node);
     });
     highlightSelectedNode();
