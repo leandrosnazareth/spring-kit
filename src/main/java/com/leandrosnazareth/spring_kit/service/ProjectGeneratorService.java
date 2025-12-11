@@ -176,45 +176,33 @@ public class ProjectGeneratorService {
     private String generateMenuFragment(List<CrudScaffoldingService.CrudUiMetadata> menuItems) {
         StringBuilder sb = new StringBuilder();
         sb.append("""
-<!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<aside th:fragment="menu" class="sidebar" th:with="currentContent=${content}">
+    <ul class="sidebar-nav" id="sidebar-nav">
 
-<head>
-    <meta charset="UTF-8">
-</head>
-
-<body>
-    <aside th:fragment="menu" class="sidebar" th:with="currentContent=${content}">
-        <ul class="sidebar-nav" id="sidebar-nav">
-
-            <li class="nav-item">
-                <a class="nav-link" th:href="@{/}"
-                    th:classappend="${currentContent} == 'index' ? ' active' : ' collapsed'">
-                    <i class="bi bi-grid"></i>
-                    <span>Dashboard</span>
-                </a>
-            </li>
+        <li class="nav-item">
+            <a class="nav-link" th:href="@{/}" th:classappend="${currentContent == 'index'} ? ' active' : ' collapsed'">
+                <i class="bi bi-grid"></i>
+                <span>Dashboard</span>
+            </a>
+        </li>
 """);
         if (menuItems != null && !menuItems.isEmpty()) {
-            sb.append("            <li class=\"nav-heading\">Cadastros</li>\n");
+            sb.append("        <li class=\"nav-heading\">Cadastros</li>\n");
             for (CrudScaffoldingService.CrudUiMetadata item : menuItems) {
-                sb.append("            <li class=\"nav-item\">\n");
-                sb.append("                <a class=\"nav-link\" th:href=\"@{'/").append(item.controllerPath()).append("}'\"\n");
-                sb.append("                    th:classappend=\"${currentContent == '").append(item.listContentFragment())
+                sb.append("        <li class=\"nav-item\">\n");
+                sb.append("            <a class=\"nav-link\" th:href=\"@{/").append(item.controllerPath()).append("}\"\n");
+                sb.append("                th:classappend=\"${currentContent == '").append(item.listContentFragment())
                     .append("' or currentContent == '").append(item.formContentFragment())
                     .append("'} ? ' active' : ' collapsed'\">\n");
-                sb.append("                    <i class=\"bi bi-collection\"></i>\n");
-                sb.append("                    <span>").append(item.displayName()).append("</span>\n");
-                sb.append("                </a>\n");
-                sb.append("            </li>\n");
+                sb.append("                <i class=\"bi bi-collection\"></i>\n");
+                sb.append("                <span>").append(item.displayName()).append("</span>\n");
+                sb.append("            </a>\n");
+                sb.append("        </li>\n");
             }
         }
         sb.append("""
-        </ul>
-    </aside>
-</body>
-
-</html>
+    </ul>
+</aside>
 """);
         return sb.toString();
     }
