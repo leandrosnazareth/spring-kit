@@ -95,7 +95,6 @@ public class CrudScaffoldingService {
         if (normalizedTestPath != null && !normalizedTestPath.endsWith("/")) {
             normalizedTestPath = normalizedTestPath + "/";
         }
-        boolean includeTests = request.isGenerateTests() && normalizedTestPath != null;
         Map<String, CrudStructureType> structureLookup = new LinkedHashMap<>();
         for (CrudClassDefinition definition : request.getClasses()) {
             String rawName = Optional.ofNullable(definition.getName()).orElse("Structure");
@@ -145,12 +144,6 @@ public class CrudScaffoldingService {
                 addFile(zos, baseTemplateDir + "form.html", buildFormTemplate(processedClass, folder, processedClassMap));
             }
 
-            if (includeTests) {
-                addFile(zos, normalizedTestPath + "service/" + processedClass.serviceName() + "Test.java",
-                    buildServiceTest(basePackage, processedClass));
-                addFile(zos, normalizedTestPath + "controller/" + processedClass.controllerName() + "Test.java",
-                    buildControllerTest(basePackage, processedClass, processedClassMap, thymeleafViews));
-            }
         }
 
         for (SupplementalStructure supplementalStructure : supplementalStructures) {
@@ -790,112 +783,6 @@ public class CrudScaffoldingService {
         return sb.toString();
     }
 
-    private String buildServiceTest(String basePackage, ProcessedClass processedClass) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("package ").append(basePackage).append(".service;\n\n");
-        sb.append("import ").append(basePackage).append(".entity.").append(processedClass.entityName()).append(";\n");
-        sb.append("import ").append(basePackage).append(".repository.").append(processedClass.repositoryName()).append(";\n");
-        sb.append("import org.junit.jupiter.api.BeforeEach;\n");
-        sb.append("import org.junit.jupiter.api.Test;\n");
-        sb.append("import org.junit.jupiter.api.extension.ExtendWith;\n");
-        sb.append("import org.mockito.Mock;\n");
-        sb.append("import org.mockito.junit.jupiter.MockitoExtension;\n");
-        sb.append("import java.util.Collections;\n");
-        sb.append("import java.util.List;\n");
-        sb.append("import static org.assertj.core.api.Assertions.assertThat;\n");
-        sb.append("import static org.mockito.Mockito.*;\n\n");
-        sb.append("@ExtendWith(MockitoExtension.class)\n");
-        sb.append("class ").append(processedClass.serviceName()).append("Test {\n\n");
-        sb.append("    @Mock\n");
-        sb.append("    private ").append(processedClass.repositoryName()).append(" repository;\n\n");
-        sb.append("    private ").append(processedClass.serviceName()).append(" service;\n\n");
-        sb.append("    @BeforeEach\n");
-        sb.append("    void setUp() {\n");
-        sb.append("        service = new ").append(processedClass.serviceName()).append("(repository);\n");
-        sb.append("    }\n\n");
-        sb.append("    @Test\n");
-        sb.append("    void findAllShouldReturnEntityList() {\n");
-        sb.append("        ").append(processedClass.entityName()).append(" entity = new ")
-            .append(processedClass.entityName()).append("();\n");
-        sb.append("        when(repository.findAll()).thenReturn(Collections.singletonList(entity));\n\n");
-        sb.append("        List<").append(processedClass.entityName()).append("> result = service.findAll();\n\n");
-        sb.append("        assertThat(result).hasSize(1);\n");
-        sb.append("        verify(repository).findAll();\n");
-        sb.append("    }\n");
-        sb.append("}\n");
-        return sb.toString();
-    }
-
-    private String buildControllerTest(String basePackage, ProcessedClass processedClass,
-                                       Map<String, ProcessedClass> processedClasses,
-                                       boolean thymeleafViews) {
-        String controllerPackage = basePackage + ".controller";
-        String controllerPath = buildControllerPath(processedClass.entityName());
-        String requestPath = thymeleafViews ? "/" + controllerPath : "/api/" + controllerPath;
-        List<ProcessedClass> relationshipDependencies = resolveRelationshipDependencies(processedClass, processedClasses);
-        SampleValue sampleValue = resolveSampleValue(processedClass.identifier().type());
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("package ").append(controllerPackage).append(";\n\n");
-        sb.append("import ").append(basePackage).append(".entity.").append(processedClass.entityName()).append(";\n");
-        sb.append("import ").append(basePackage).append(".service.").append(processedClass.serviceName()).append(";\n");
-        for (ProcessedClass dependency : relationshipDependencies) {
-            sb.append("import ").append(basePackage).append(".service.")
-                .append(dependency.serviceName()).append(";\n");
-        }
-        if (sampleValue.importName() != null) {
-            sb.append("import ").append(sampleValue.importName()).append(";\n");
-        }
-        sb.append("import org.junit.jupiter.api.Test;\n");
-        sb.append("import org.springframework.beans.factory.annotation.Autowired;\n");
-        sb.append("import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;\n");
-        sb.append("import org.springframework.boot.test.mock.mockito.MockBean;\n");
-        sb.append("import org.springframework.test.web.servlet.MockMvc;\n");
-        sb.append("import java.util.Collections;\n");
-        sb.append("import java.util.List;\n");
-        sb.append("\n");
-        sb.append("import static org.mockito.Mockito.when;\n");
-        sb.append("import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;\n");
-        sb.append("import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;\n");
-        if (!thymeleafViews) {
-            sb.append("import static org.hamcrest.Matchers.notNullValue;\n");
-        }
-        sb.append("\n");
-        sb.append("@WebMvcTest(").append(processedClass.controllerName()).append(".class)\n");
-        sb.append("class ").append(processedClass.controllerName()).append("Test {\n\n");
-        sb.append("    @Autowired\n");
-        sb.append("    private MockMvc mockMvc;\n\n");
-        sb.append("    @MockBean\n");
-        sb.append("    private ").append(processedClass.serviceName()).append(" service;\n");
-        if (!relationshipDependencies.isEmpty()) {
-            sb.append("\n");
-            for (ProcessedClass dependency : relationshipDependencies) {
-                sb.append("    @MockBean\n");
-                sb.append("    private ").append(dependency.serviceName()).append(" ")
-                    .append(getServiceFieldName(dependency)).append(";\n");
-            }
-        }
-        sb.append("\n");
-        sb.append("    @Test\n");
-        sb.append("    void shouldListItems() throws Exception {\n");
-        sb.append("        ").append(processedClass.entityName()).append(" entity = new ")
-            .append(processedClass.entityName()).append("();\n");
-        sb.append("        entity.").append(getFieldSetterName(processedClass.identifier()))
-            .append("(").append(sampleValue.expression()).append(");\n");
-        sb.append("        when(service.findAll()).thenReturn(Collections.singletonList(entity));\n\n");
-        sb.append("        mockMvc.perform(get(\"").append(requestPath).append("\"))\n");
-        sb.append("            .andExpect(status().isOk())\n");
-        if (thymeleafViews) {
-            sb.append("            .andExpect(view().name(\"").append(controllerPath).append("/list\"))\n");
-            sb.append("            .andExpect(model().attributeExists(\"items\"));\n");
-        } else {
-            sb.append("            .andExpect(jsonPath(\"$[0].").append(processedClass.identifier().name())
-                .append("\").value(notNullValue()));\n");
-        }
-        sb.append("    }\n");
-        sb.append("}\n");
-        return sb.toString();
-    }
 
     private String buildColumnAnnotation(ProcessedField field) {
         List<String> attributes = new ArrayList<>();
@@ -959,21 +846,6 @@ public class CrudScaffoldingService {
             }
         }
         return imports;
-    }
-
-    private SampleValue resolveSampleValue(String typeName) {
-        return switch (typeName) {
-            case "Long" -> new SampleValue("1L", null);
-            case "Integer" -> new SampleValue("1", null);
-            case "Double" -> new SampleValue("1.0d", null);
-            case "BigDecimal" -> new SampleValue("BigDecimal.ONE", "java.math.BigDecimal");
-            case "UUID" -> new SampleValue("UUID.randomUUID()", "java.util.UUID");
-            case "LocalDate" -> new SampleValue("LocalDate.now()", "java.time.LocalDate");
-            case "LocalDateTime" -> new SampleValue("LocalDateTime.now()", "java.time.LocalDateTime");
-            case "Boolean" -> new SampleValue("Boolean.TRUE", null);
-            case "String" -> new SampleValue("\"sample-value\"", null);
-            default -> new SampleValue("1L", null);
-        };
     }
 
     private String sanitizeModuleName(String name) {
@@ -1084,10 +956,6 @@ public class CrudScaffoldingService {
             .map(ProcessedField::name)
             .findFirst()
             .orElse(target.identifier().name());
-    }
-
-    private String getFieldSetterName(ProcessedField field) {
-        return "set" + StringUtils.capitalize(field.name());
     }
 
     private String getListFieldExpression(ProcessedField field, Map<String, ProcessedClass> processedClasses) {
@@ -1397,8 +1265,6 @@ public class CrudScaffoldingService {
     }
 
     private record GeneratedField(String name, String type) { }
-
-    private record SampleValue(String expression, String importName) { }
 
     private record ProcessedClass(
         String entityName,
