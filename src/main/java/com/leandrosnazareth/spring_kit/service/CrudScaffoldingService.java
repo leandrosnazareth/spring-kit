@@ -61,12 +61,12 @@ public class CrudScaffoldingService {
         return baos.toByteArray();
     }
 
-    public void appendCrudToProject(CrudGenerationRequest request, String srcMainJavaBasePath,
-                                    String srcTestJavaBasePath, String templatesBasePath,
-                                    String basePackage, ZipOutputStream zos) throws IOException {
+    public List<CrudUiMetadata> appendCrudToProject(CrudGenerationRequest request, String srcMainJavaBasePath,
+                                                    String srcTestJavaBasePath, String templatesBasePath,
+                                                    String basePackage, ZipOutputStream zos) throws IOException {
         String sanitizedPackage = sanitizePackageName(basePackage);
         request.setBasePackage(sanitizedPackage);
-        writeCrudArtifacts(request, sanitizedPackage, srcMainJavaBasePath, srcTestJavaBasePath,
+        return writeCrudArtifacts(request, sanitizedPackage, srcMainJavaBasePath, srcTestJavaBasePath,
             templatesBasePath, zos);
     }
 
@@ -77,12 +77,12 @@ public class CrudScaffoldingService {
         zos.closeEntry();
     }
 
-    private void writeCrudArtifacts(CrudGenerationRequest request, String basePackage,
-                                    String destinationJavaBasePath, String destinationTestJavaBasePath,
-                                    String destinationTemplatesPath,
-                                    ZipOutputStream zos) throws IOException {
+    private List<CrudUiMetadata> writeCrudArtifacts(CrudGenerationRequest request, String basePackage,
+                                                    String destinationJavaBasePath, String destinationTestJavaBasePath,
+                                                    String destinationTemplatesPath,
+                                                    ZipOutputStream zos) throws IOException {
         if (request.getClasses() == null) {
-            return;
+            return Collections.emptyList();
         }
         boolean thymeleafViews = request.isThymeleafViews();
         boolean useLombok = request.isUseLombok();
@@ -90,10 +90,6 @@ public class CrudScaffoldingService {
         String normalizedTemplatePath = destinationTemplatesPath;
         if (normalizedTemplatePath != null && !normalizedTemplatePath.endsWith("/")) {
             normalizedTemplatePath = normalizedTemplatePath + "/";
-        }
-        String normalizedTestPath = destinationTestJavaBasePath;
-        if (normalizedTestPath != null && !normalizedTestPath.endsWith("/")) {
-            normalizedTestPath = normalizedTestPath + "/";
         }
         Map<String, CrudStructureType> structureLookup = new LinkedHashMap<>();
         for (CrudClassDefinition definition : request.getClasses()) {
@@ -122,6 +118,7 @@ public class CrudScaffoldingService {
         processedEntities.forEach(entity -> customTypePackages.put(entity.entityName(), basePackage + ".entity"));
         supplementalStructures.forEach(structure -> customTypePackages.put(structure.name(), basePackage + ".model"));
 
+        List<CrudUiMetadata> uiMetadata = new ArrayList<>();
         for (ProcessedClass processedClass : processedEntities) {
 
             String entityContent = buildEntity(basePackage, processedClass, useLombok, useJakarta,
@@ -142,6 +139,12 @@ public class CrudScaffoldingService {
                 String baseTemplateDir = normalizedTemplatePath + folder + "/";
                 addFile(zos, baseTemplateDir + "list.html", buildListTemplate(processedClass, folder, processedClassMap));
                 addFile(zos, baseTemplateDir + "form.html", buildFormTemplate(processedClass, folder, processedClassMap));
+                uiMetadata.add(new CrudUiMetadata(
+                    folder,
+                    toDisplayName(processedClass.entityName()),
+                    folder + "/list",
+                    folder + "/form"
+                ));
             }
 
         }
@@ -158,6 +161,7 @@ public class CrudScaffoldingService {
                 addFile(zos, targetPath, content);
             }
         }
+        return thymeleafViews ? uiMetadata : Collections.emptyList();
     }
 
     private ProcessedClass prepareClass(CrudClassDefinition definition,
@@ -604,7 +608,8 @@ public class CrudScaffoldingService {
         sb.append("    @GetMapping\n");
         sb.append("    public String list(Model model) {\n");
         sb.append("        model.addAttribute(\"items\", service.findAll());\n");
-        sb.append("        return \"").append(controllerPath).append("/list\";\n");
+        sb.append("        model.addAttribute(\"content\", \"").append(controllerPath).append("/list\");\n");
+        sb.append("        return \"layout/main\";\n");
         sb.append("    }\n\n");
 
         sb.append("    @GetMapping(\"/create\")\n");
@@ -613,7 +618,8 @@ public class CrudScaffoldingService {
         if (!relationshipFields.isEmpty()) {
             sb.append("        populateRelationships(model);\n");
         }
-        sb.append("        return \"").append(controllerPath).append("/form\";\n");
+        sb.append("        model.addAttribute(\"content\", \"").append(controllerPath).append("/form\");\n");
+        sb.append("        return \"layout/main\";\n");
         sb.append("    }\n\n");
 
         sb.append("    @GetMapping(\"/{id}/edit\")\n");
@@ -623,7 +629,8 @@ public class CrudScaffoldingService {
         if (!relationshipFields.isEmpty()) {
             sb.append("        populateRelationships(model);\n");
         }
-        sb.append("        return \"").append(controllerPath).append("/form\";\n");
+        sb.append("        model.addAttribute(\"content\", \"").append(controllerPath).append("/form\");\n");
+        sb.append("        return \"layout/main\";\n");
         sb.append("    }\n\n");
 
         sb.append("    @PostMapping(\"/save\")\n");
@@ -667,48 +674,70 @@ public class CrudScaffoldingService {
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html>\n");
         sb.append("<html xmlns:th=\"http://www.thymeleaf.org\">\n");
-        sb.append("<head>\n");
-        sb.append("    <meta charset=\"UTF-8\">\n");
-        sb.append("    <title>").append(processedClass.entityName()).append(" - Lista</title>\n");
-        sb.append("    <style>\n");
-        sb.append("        body { font-family: Arial, sans-serif; margin: 30px; }\n");
-        sb.append("        table { width: 100%; border-collapse: collapse; margin-top: 20px; }\n");
-        sb.append("        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }\n");
-        sb.append("        th { background: #f0f0f0; }\n");
-        sb.append("        a.button { display: inline-block; padding: 8px 16px; background: #2c3e50; color: #fff; text-decoration: none; border-radius: 4px; }\n");
-        sb.append("        .actions { display: flex; gap: 8px; }\n");
-        sb.append("        .actions form { display: inline; }\n");
-        sb.append("    </style>\n");
-        sb.append("</head>\n");
         sb.append("<body>\n");
-        sb.append("    <h1>").append(processedClass.entityName()).append("</h1>\n");
-        sb.append("    <a class=\"button\" th:href=\"@{'/").append(controllerPath).append("/create'}\">Novo registro</a>\n");
-        sb.append("    <table>\n");
-        sb.append("        <thead>\n");
-        sb.append("            <tr>\n");
+        sb.append("    <div th:fragment=\"content\">\n");
+        sb.append("        <div class=\"pagetitle\">\n");
+        sb.append("            <h1>").append(processedClass.entityName()).append("</h1>\n");
+        sb.append("            <nav>\n");
+        sb.append("                <ol class=\"breadcrumb\">\n");
+        sb.append("                    <li class=\"breadcrumb-item\"><a th:href=\"@{/}\">Início</a></li>\n");
+        sb.append("                    <li class=\"breadcrumb-item active\">").append(processedClass.entityName()).append("</li>\n");
+        sb.append("                </ol>\n");
+        sb.append("            </nav>\n");
+        sb.append("        </div>\n");
+        sb.append("        <section class=\"section\">\n");
+        sb.append("            <div class=\"card\">\n");
+        sb.append("                <div class=\"card-header d-flex align-items-center justify-content-between gap-3 flex-wrap\">\n");
+        sb.append("                    <div>\n");
+        sb.append("                        <h5 class=\"card-title mb-0\">Gerenciar ").append(processedClass.entityName()).append("</h5>\n");
+        sb.append("                        <small class=\"text-body-secondary\">Listagem completa e ações rápidas</small>\n");
+        sb.append("                    </div>\n");
+        sb.append("                    <a class=\"btn btn-primary\" th:href=\"@{'/").append(controllerPath).append("/create'}\">\n");
+        sb.append("                        <i class=\"bi bi-plus\"></i> Novo registro\n");
+        sb.append("                    </a>\n");
+        sb.append("                </div>\n");
+        sb.append("                <div class=\"card-body\">\n");
+        sb.append("                    <div th:if=\"${#lists.isEmpty(items)}\" class=\"alert alert-info\">\n");
+        sb.append("                        Nenhum registro encontrado. Clique em \"Novo registro\" para começar.\n");
+        sb.append("                    </div>\n");
+        sb.append("                    <div th:if=\"${!#lists.isEmpty(items)}\" class=\"table-responsive\">\n");
+        sb.append("                        <table class=\"table table-hover align-middle\">\n");
+        sb.append("                            <thead>\n");
+        sb.append("                                <tr>\n");
         for (ProcessedField field : processedClass.fields()) {
-            sb.append("                <th>").append(StringUtils.capitalize(field.name())).append("</th>\n");
+            sb.append("                                    <th>").append(StringUtils.capitalize(field.name())).append("</th>\n");
         }
-        sb.append("                <th>Ações</th>\n");
-        sb.append("            </tr>\n");
-        sb.append("        </thead>\n");
-        sb.append("        <tbody>\n");
-        sb.append("            <tr th:each=\"item : ${items}\">\n");
+        sb.append("                                    <th class=\"text-end\">Ações</th>\n");
+        sb.append("                                </tr>\n");
+        sb.append("                            </thead>\n");
+        sb.append("                            <tbody>\n");
+        sb.append("                                <tr th:each=\"item : ${items}\">\n");
         for (ProcessedField field : processedClass.fields()) {
-            sb.append("                <td th:text=\"")
+            sb.append("                                    <td th:text=\"")
                 .append(getListFieldExpression(field, processedClasses)).append("\"></td>\n");
         }
-        sb.append("                <td class=\"actions\">\n");
-        sb.append("                    <a class=\"button\" th:href=\"@{'/").append(controllerPath).append("/' + ${item.")
-            .append(idField).append("} + '/edit'}\">Editar</a>\n");
-        sb.append("                    <form th:action=\"@{'/").append(controllerPath).append("/' + ${item.")
-            .append(idField).append("} + '/delete'}\" method=\"post\" style=\"display:inline;\">\n");
-        sb.append("                        <button type=\"submit\">Excluir</button>\n");
-        sb.append("                    </form>\n");
-        sb.append("                </td>\n");
-        sb.append("            </tr>\n");
-        sb.append("        </tbody>\n");
-        sb.append("    </table>\n");
+        sb.append("                                    <td class=\"text-end\">\n");
+        sb.append("                                        <div class=\"btn-group\" role=\"group\">\n");
+        sb.append("                                            <a class=\"btn btn-sm btn-outline-secondary\" th:href=\"@{'/").append(controllerPath)
+            .append("/' + ${item.").append(idField).append("} + '/edit'}\">\n");
+        sb.append("                                                <i class=\"bi bi-pencil\"></i>\n");
+        sb.append("                                            </a>\n");
+        sb.append("                                            <form th:action=\"@{'/").append(controllerPath).append("/' + ${item.")
+            .append(idField).append("} + '/delete'}\" method=\"post\" class=\"d-inline\">\n");
+        sb.append("                                                <button type=\"submit\" class=\"btn btn-sm btn-outline-danger\">\n");
+        sb.append("                                                    <i class=\"bi bi-trash\"></i>\n");
+        sb.append("                                                </button>\n");
+        sb.append("                                            </form>\n");
+        sb.append("                                        </div>\n");
+        sb.append("                                    </td>\n");
+        sb.append("                                </tr>\n");
+        sb.append("                            </tbody>\n");
+        sb.append("                        </table>\n");
+        sb.append("                    </div>\n");
+        sb.append("                </div>\n");
+        sb.append("            </div>\n");
+        sb.append("        </section>\n");
+        sb.append("    </div>\n");
         sb.append("</body>\n");
         sb.append("</html>\n");
         return sb.toString();
@@ -720,39 +749,45 @@ public class CrudScaffoldingService {
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html>\n");
         sb.append("<html xmlns:th=\"http://www.thymeleaf.org\">\n");
-        sb.append("<head>\n");
-        sb.append("    <meta charset=\"UTF-8\">\n");
-        sb.append("    <title>").append(processedClass.entityName()).append(" - Formulário</title>\n");
-        sb.append("    <style>\n");
-        sb.append("        body { font-family: Arial, sans-serif; margin: 30px; }\n");
-        sb.append("        form { max-width: 600px; }\n");
-        sb.append("        label { display: block; margin-top: 20px; font-weight: bold; }\n");
-        sb.append("        input { width: 100%; padding: 10px; margin-top: 8px; box-sizing: border-box; }\n");
-        sb.append("        .buttons { margin-top: 20px; display: flex; gap: 10px; }\n");
-        sb.append("        button, a.button { padding: 10px 16px; border: none; border-radius: 4px; cursor: pointer; }\n");
-        sb.append("        button { background: #27ae60; color: #fff; }\n");
-        sb.append("        a.button { background: #bdc3c7; color: #2c3e50; text-decoration: none; }\n");
-        sb.append("    </style>\n");
-        sb.append("</head>\n");
         sb.append("<body>\n");
-        sb.append("    <h1>Gerenciar ").append(processedClass.entityName()).append("</h1>\n");
-        sb.append("    <form th:action=\"@{'/").append(controllerPath).append("/save'}\" method=\"post\" th:object=\"${item}\">\n");
-        sb.append("        <input type=\"hidden\" th:field=\"*{").append(idField).append("}\">\n");
+        sb.append("    <div th:fragment=\"content\">\n");
+        sb.append("        <div class=\"pagetitle\">\n");
+        sb.append("            <h1>").append(processedClass.entityName()).append("</h1>\n");
+        sb.append("            <nav>\n");
+        sb.append("                <ol class=\"breadcrumb\">\n");
+        sb.append("                    <li class=\"breadcrumb-item\"><a th:href=\"@{/").append(controllerPath).append("}\">")
+            .append(processedClass.entityName()).append("</a></li>\n");
+        sb.append("                    <li class=\"breadcrumb-item active\">Formulário</li>\n");
+        sb.append("                </ol>\n");
+        sb.append("            </nav>\n");
+        sb.append("        </div>\n");
+        sb.append("        <section class=\"section\">\n");
+        sb.append("            <div class=\"card\">\n");
+        sb.append("                <div class=\"card-header d-flex justify-content-between align-items-center\">\n");
+        sb.append("                    <div>\n");
+        sb.append("                        <h5 class=\"card-title mb-0\">Detalhes</h5>\n");
+        sb.append("                        <small class=\"text-body-secondary\">Preencha os campos obrigatórios para salvar</small>\n");
+        sb.append("                    </div>\n");
+        sb.append("                </div>\n");
+        sb.append("                <div class=\"card-body\">\n");
+        sb.append("                    <form th:action=\"@{'/").append(controllerPath).append("/save'}\" method=\"post\" th:object=\"${item}\" class=\"row g-3\">\n");
+        sb.append("                        <input type=\"hidden\" th:field=\"*{").append(idField).append("}\">\n");
         for (ProcessedField field : processedClass.fields()) {
             if (field.identifier()) {
                 continue;
             }
-            sb.append("        <label>").append(StringUtils.capitalize(field.name())).append("</label>\n");
+            sb.append("                        <div class=\"col-md-6\">\n");
+            sb.append("                            <label class=\"form-label\">").append(StringUtils.capitalize(field.name())).append("</label>\n");
             if (isRenderableRelationshipField(field, processedClasses)) {
                 ProcessedClass target = processedClasses.get(field.targetEntity());
                 if (target == null) {
-                    sb.append("        <input type=\"text\" th:field=\"*{").append(field.name()).append("}\" />\n");
+                    sb.append("                            <input type=\"text\" class=\"form-control\" th:field=\"*{").append(field.name()).append("}\" />\n");
                 } else {
                     String optionAttribute = getRelationshipOptionsAttributeName(field);
                     String optionVar = getRelationshipOptionVariableName(field);
                     String optionValue = optionVar + "." + target.identifier().name();
                     String labelField = resolveTargetDisplayFieldName(target);
-                    sb.append("        <select");
+                    sb.append("                            <select class=\"form-select\"");
                     if (field.isCollection()) {
                         sb.append(" multiple size=\"5\"");
                     }
@@ -761,23 +796,28 @@ public class CrudScaffoldingService {
                     } else {
                         sb.append(" th:field=\"*{").append(field.name()).append(".")
                             .append(target.identifier().name()).append("}\">\n");
-                        sb.append("            <option value=\"\">Selecione...</option>\n");
+                        sb.append("                                <option value=\"\">Selecione...</option>\n");
                     }
-                    sb.append("            <option th:each=\"").append(optionVar).append(" : ${")
+                    sb.append("                                <option th:each=\"").append(optionVar).append(" : ${")
                         .append(optionAttribute).append("}\" th:value=\"${").append(optionValue)
                         .append("}\" th:text=\"${").append(optionVar).append(".").append(labelField)
                         .append("}\"></option>\n");
-                    sb.append("        </select>\n");
+                    sb.append("                            </select>\n");
                 }
             } else {
-                sb.append("        <input type=\"text\" th:field=\"*{").append(field.name()).append("}\" />\n");
+                sb.append("                            <input type=\"text\" class=\"form-control\" th:field=\"*{").append(field.name()).append("}\" />\n");
             }
+            sb.append("                        </div>\n");
         }
-        sb.append("        <div class=\"buttons\">\n");
-        sb.append("            <button type=\"submit\">Salvar</button>\n");
-        sb.append("            <a class=\"button\" th:href=\"@{'/").append(controllerPath).append("'}\">Cancelar</a>\n");
-        sb.append("        </div>\n");
-        sb.append("    </form>\n");
+        sb.append("                        <div class=\"col-12 d-flex justify-content-end gap-2\">\n");
+        sb.append("                            <a class=\"btn btn-outline-secondary\" th:href=\"@{'/").append(controllerPath).append("'}\">Cancelar</a>\n");
+        sb.append("                            <button type=\"submit\" class=\"btn btn-primary\">Salvar</button>\n");
+        sb.append("                        </div>\n");
+        sb.append("                    </form>\n");
+        sb.append("                </div>\n");
+        sb.append("            </div>\n");
+        sb.append("        </section>\n");
+        sb.append("    </div>\n");
         sb.append("</body>\n");
         sb.append("</html>\n");
         return sb.toString();
@@ -900,6 +940,14 @@ public class CrudScaffoldingService {
             kebab = kebab + "s";
         }
         return kebab;
+    }
+
+    private String toDisplayName(String entityName) {
+        if (!StringUtils.hasText(entityName)) {
+            return "Registro";
+        }
+        String spaced = entityName.replaceAll("([a-z])([A-Z])", "$1 $2");
+        return StringUtils.capitalize(spaced.trim());
     }
 
     private String resolveEntityFieldType(ProcessedField field) {
@@ -1293,5 +1341,12 @@ public class CrudScaffoldingService {
         List<ProcessedField> fields,
         List<ProcessedMethod> methods,
         List<String> enumConstants
+    ) { }
+
+    public record CrudUiMetadata(
+        String controllerPath,
+        String displayName,
+        String listContentFragment,
+        String formContentFragment
     ) { }
 }

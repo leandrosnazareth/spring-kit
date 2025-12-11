@@ -1,17 +1,25 @@
 package com.leandrosnazareth.spring_kit.service;
 
-import com.leandrosnazareth.spring_kit.model.CrudGenerationRequest;
-import com.leandrosnazareth.spring_kit.model.Dependency;
-import com.leandrosnazareth.spring_kit.model.ProjectRequest;
-import org.springframework.stereotype.Service;
-import tools.jackson.databind.ObjectMapper;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+
+import org.springframework.stereotype.Service;
+
+import com.leandrosnazareth.spring_kit.model.CrudGenerationRequest;
+import com.leandrosnazareth.spring_kit.model.Dependency;
+import com.leandrosnazareth.spring_kit.model.ProjectRequest;
+
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class ProjectGeneratorService {
@@ -19,6 +27,15 @@ public class ProjectGeneratorService {
     private final DependencyService dependencyService;
     private final CrudScaffoldingService crudScaffoldingService;
     private final ObjectMapper objectMapper;
+    private static final Path DASHBOARD_TEMPLATE_RESOURCES =
+        Paths.get("/home/nazareth/Documentos/Projetos/template-thymeleaf/src/main/resources");
+    private static final Set<String> DASHBOARD_TEMPLATE_WHITELIST = Set.of(
+        "layout/main.html",
+        "fragments/header.html",
+        "fragments/footer.html",
+        "fragments/menu.html",
+        "index.html"
+    );
 
     public ProjectGeneratorService(DependencyService dependencyService,
                                    CrudScaffoldingService crudScaffoldingService,
@@ -36,6 +53,7 @@ public class ProjectGeneratorService {
         String srcMainJava = baseDir + "src/main/java/" + request.getPackageName().replace(".", "/") + "/";
         String srcMainResources = baseDir + "src/main/resources/";
         String srcTestJava = baseDir + "src/test/java/" + request.getPackageName().replace(".", "/") + "/";
+        CrudGenerationRequest crudRequest = parseCrudDefinition(request);
 
         // Generate pom.xml or build.gradle
         if ("maven".equals(request.getProjectType())) {
@@ -68,27 +86,39 @@ public class ProjectGeneratorService {
         // Generate .gitignore
         addFileToZip(zos, baseDir + ".gitignore", generateGitignore(request));
 
-        appendCrudModuleIfPresent(request, srcMainJava, srcTestJava, srcMainResources + "templates/", zos);
+        List<CrudScaffoldingService.CrudUiMetadata> crudUiMetadata = appendCrudModuleIfPresent(
+            request, srcMainJava, srcTestJava, srcMainResources + "templates/", zos, crudRequest);
+
+        if (hasDependency(request, "thymeleaf")) {
+            copyDashboardTemplateResources(zos, baseDir, crudUiMetadata);
+            addFileToZip(zos, srcMainJava + "controller/DashboardController.java",
+                generateDashboardController(request.getPackageName()));
+        }
 
         zos.close();
         return baos.toByteArray();
     }
 
     private void addFileToZip(ZipOutputStream zos, String fileName, String content) throws IOException {
+        addFileToZip(zos, fileName, content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void addFileToZip(ZipOutputStream zos, String fileName, byte[] content) throws IOException {
         ZipEntry entry = new ZipEntry(fileName);
         zos.putNextEntry(entry);
-        zos.write(content.getBytes(StandardCharsets.UTF_8));
+        zos.write(content);
         zos.closeEntry();
     }
 
-    private void appendCrudModuleIfPresent(ProjectRequest request, String srcMainJava,
-                                           String srcTestJava, String templatesBasePath, ZipOutputStream zos) throws IOException {
-        if (request.getCrudDefinition() == null || request.getCrudDefinition().isBlank()) {
-            return;
-        }
-        CrudGenerationRequest crudRequest = objectMapper.readValue(request.getCrudDefinition(), CrudGenerationRequest.class);
-        if (crudRequest.getClasses() == null || crudRequest.getClasses().isEmpty()) {
-            return;
+    private List<CrudScaffoldingService.CrudUiMetadata> appendCrudModuleIfPresent(ProjectRequest request,
+                                                                                 String srcMainJava,
+                                                                                 String srcTestJava,
+                                                                                 String templatesBasePath,
+                                                                                 ZipOutputStream zos,
+                                                                                 CrudGenerationRequest crudRequest)
+        throws IOException {
+        if (crudRequest == null || crudRequest.getClasses() == null || crudRequest.getClasses().isEmpty()) {
+            return Collections.emptyList();
         }
         crudRequest.setBasePackage(request.getPackageName());
         crudRequest.setModuleName(request.getArtifactId() + "-crud");
@@ -96,8 +126,118 @@ public class ProjectGeneratorService {
         crudRequest.setUseLombok(hasDependency(request, "lombok"));
         crudRequest.setUseJakartaPersistence(isJakartaPersistence(request));
         crudRequest.setGenerateTests(hasDependency(request, "test"));
-        crudScaffoldingService.appendCrudToProject(crudRequest, srcMainJava, srcTestJava, templatesBasePath,
+        return crudScaffoldingService.appendCrudToProject(crudRequest, srcMainJava, srcTestJava, templatesBasePath,
             request.getPackageName(), zos);
+    }
+
+    private CrudGenerationRequest parseCrudDefinition(ProjectRequest request) throws IOException {
+        if (request.getCrudDefinition() == null || request.getCrudDefinition().isBlank()) {
+            return null;
+        }
+        return objectMapper.readValue(request.getCrudDefinition(), CrudGenerationRequest.class);
+    }
+
+    private void copyDashboardTemplateResources(ZipOutputStream zos, String baseDir,
+                                                List<CrudScaffoldingService.CrudUiMetadata> menuItems) throws IOException {
+        Path templatesDir = DASHBOARD_TEMPLATE_RESOURCES.resolve("templates");
+        Path staticDir = DASHBOARD_TEMPLATE_RESOURCES.resolve("static");
+        copyTemplateDirectory(zos, templatesDir, baseDir + "src/main/resources/templates/", true, menuItems,
+            DASHBOARD_TEMPLATE_WHITELIST);
+        copyTemplateDirectory(zos, staticDir, baseDir + "src/main/resources/static/", false, menuItems, null);
+    }
+
+    private void copyTemplateDirectory(ZipOutputStream zos, Path sourceDir, String targetBase,
+                                       boolean customizeMenu, List<CrudScaffoldingService.CrudUiMetadata> menuItems,
+                                       Set<String> whitelist) throws IOException {
+        if (!Files.exists(sourceDir)) {
+            return;
+        }
+        try (Stream<Path> paths = Files.walk(sourceDir)) {
+            paths.filter(Files::isRegularFile).forEach(path -> {
+                Path relative = sourceDir.relativize(path);
+                String normalized = relative.toString().replace("\\", "/");
+                if (whitelist != null && !whitelist.contains(normalized)) {
+                    return;
+                }
+                String entryName = targetBase + normalized;
+                try {
+                    byte[] content = Files.readAllBytes(path);
+                    if (customizeMenu && "fragments/menu.html".equals(normalized)) {
+                        content = generateMenuFragment(menuItems).getBytes(StandardCharsets.UTF_8);
+                    }
+                    addFileToZip(zos, entryName, content);
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to copy template resource " + path, e);
+                }
+            });
+        }
+    }
+
+    private String generateMenuFragment(List<CrudScaffoldingService.CrudUiMetadata> menuItems) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("""
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+    <meta charset="UTF-8">
+</head>
+
+<body>
+    <aside th:fragment="menu" class="sidebar" th:with="currentContent=${content}">
+        <ul class="sidebar-nav" id="sidebar-nav">
+
+            <li class="nav-item">
+                <a class="nav-link" th:href="@{/}"
+                    th:classappend="${currentContent} == 'index' ? ' active' : ' collapsed'">
+                    <i class="bi bi-grid"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+""");
+        if (menuItems != null && !menuItems.isEmpty()) {
+            sb.append("            <li class=\"nav-heading\">Cadastros</li>\n");
+            for (CrudScaffoldingService.CrudUiMetadata item : menuItems) {
+                sb.append("            <li class=\"nav-item\">\n");
+                sb.append("                <a class=\"nav-link\" th:href=\"@{'/").append(item.controllerPath()).append("}'\"\n");
+                sb.append("                    th:classappend=\"${currentContent == '").append(item.listContentFragment())
+                    .append("' or currentContent == '").append(item.formContentFragment())
+                    .append("'} ? ' active' : ' collapsed'\">\n");
+                sb.append("                    <i class=\"bi bi-collection\"></i>\n");
+                sb.append("                    <span>").append(item.displayName()).append("</span>\n");
+                sb.append("                </a>\n");
+                sb.append("            </li>\n");
+            }
+        }
+        sb.append("""
+        </ul>
+    </aside>
+</body>
+
+</html>
+""");
+        return sb.toString();
+    }
+
+    private String generateDashboardController(String basePackage) {
+        String controllerPackage = basePackage + ".controller";
+        return """
+package %s;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+
+@Controller
+public class DashboardController {
+
+    @GetMapping("/")
+    public String index(Model model) {
+        model.addAttribute("content", "index");
+        return "layout/main";
+    }
+}
+""".formatted(controllerPackage);
     }
 
     private boolean hasDependency(ProjectRequest request, String dependencyId) {
