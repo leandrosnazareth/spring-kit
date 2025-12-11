@@ -127,15 +127,13 @@ public class CrudScaffoldingService {
 
             String entityContent = buildEntity(basePackage, processedClass, useLombok, useJakarta,
                 processedClassMap, customTypePackages);
-            String dtoContent = buildDto(basePackage, processedClass, useLombok, processedClassMap, customTypePackages);
             String repositoryContent = buildRepository(basePackage, processedClass);
-            String serviceContent = buildService(basePackage, processedClass, processedClassMap);
+            String serviceContent = buildService(basePackage, processedClass);
             String controllerContent = thymeleafViews
                 ? buildMvcController(basePackage, processedClass, processedClassMap)
                 : buildRestController(basePackage, processedClass);
 
             addFile(zos, destinationJavaBasePath + "entity/" + processedClass.entityName + ".java", entityContent);
-            addFile(zos, destinationJavaBasePath + "dto/" + processedClass.dtoName + ".java", dtoContent);
             addFile(zos, destinationJavaBasePath + "repository/" + processedClass.repositoryName + ".java", repositoryContent);
             addFile(zos, destinationJavaBasePath + "service/" + processedClass.serviceName + ".java", serviceContent);
             addFile(zos, destinationJavaBasePath + "controller/" + processedClass.controllerName + ".java", controllerContent);
@@ -143,7 +141,7 @@ public class CrudScaffoldingService {
             if (thymeleafViews && normalizedTemplatePath != null) {
                 String folder = buildControllerPath(processedClass.entityName());
                 String baseTemplateDir = normalizedTemplatePath + folder + "/";
-                addFile(zos, baseTemplateDir + "list.html", buildListTemplate(processedClass, folder));
+                addFile(zos, baseTemplateDir + "list.html", buildListTemplate(processedClass, folder, processedClassMap));
                 addFile(zos, baseTemplateDir + "form.html", buildFormTemplate(processedClass, folder, processedClassMap));
             }
 
@@ -176,7 +174,6 @@ public class CrudScaffoldingService {
         if (!StringUtils.hasText(entityName)) {
             entityName = "GeneratedEntity";
         }
-        String dtoName = entityName + "Dto";
         String repositoryName = entityName + "Repository";
         String serviceName = entityName + "Service";
         String controllerName = entityName + "Controller";
@@ -214,7 +211,6 @@ public class CrudScaffoldingService {
 
         return new ProcessedClass(
             entityName,
-            dtoName,
             repositoryName,
             serviceName,
             controllerName,
@@ -335,49 +331,6 @@ public class CrudScaffoldingService {
         return sb.toString();
     }
 
-    private String buildDto(String basePackage, ProcessedClass processedClass, boolean useLombok,
-                            Map<String, ProcessedClass> processedClasses,
-                            Map<String, String> customTypePackages) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("package ").append(basePackage).append(".dto;\n\n");
-        Set<String> imports = new TreeSet<>();
-        if (useLombok) {
-            sb.append("import lombok.AllArgsConstructor;\n");
-            sb.append("import lombok.Data;\n");
-            sb.append("import lombok.NoArgsConstructor;\n");
-        }
-        List<GeneratedField> dtoFields = buildDtoFields(processedClass, processedClasses);
-        dtoFields.forEach(field -> {
-            if (requiresListImport(field.type())) {
-                imports.add("java.util.List");
-            }
-            addCustomImport(field.type(), basePackage + ".dto", customTypePackages, imports);
-        });
-        imports.forEach(i -> sb.append("import ").append(i).append(";\n"));
-        if (!imports.isEmpty()) {
-            sb.append("\n");
-        }
-        if (useLombok) {
-            sb.append("@Data\n");
-            sb.append("@NoArgsConstructor\n");
-            sb.append("@AllArgsConstructor\n");
-        }
-        sb.append("public class ").append(processedClass.dtoName()).append(" {\n\n");
-
-        for (GeneratedField field : dtoFields) {
-            sb.append("    private ").append(field.type()).append(" ").append(field.name()).append(";\n");
-        }
-        sb.append("\n");
-
-        if (!useLombok) {
-            appendConstructors(sb, processedClass.dtoName(), dtoFields);
-            appendGettersAndSetters(sb, dtoFields);
-        }
-
-        sb.append("}\n");
-        return sb.toString();
-    }
-
     private String buildPlainClass(String basePackage, SupplementalStructure structure, boolean useLombok,
                                    Map<String, String> customTypePackages) {
         String packageName = basePackage + ".model";
@@ -485,22 +438,15 @@ public class CrudScaffoldingService {
         return sb.toString();
     }
 
-    private String buildService(String basePackage, ProcessedClass processedClass,
-                                Map<String, ProcessedClass> processedClasses) {
+    private String buildService(String basePackage, ProcessedClass processedClass) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".service;\n\n");
-        sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
         sb.append("import ").append(basePackage).append(".entity.").append(processedClass.entityName()).append(";\n");
         sb.append("import ").append(basePackage).append(".repository.").append(processedClass.repositoryName()).append(";\n");
         sb.append("import org.springframework.http.HttpStatus;\n");
         sb.append("import org.springframework.stereotype.Service;\n");
         sb.append("import org.springframework.web.server.ResponseStatusException;\n");
-        if (processedClass.fields().stream().anyMatch(f -> f.objectField() && f.isCollection())) {
-            sb.append("import java.util.ArrayList;\n");
-        }
-        sb.append("import java.util.Collections;\n");
-        sb.append("import java.util.List;\n");
-        sb.append("import java.util.stream.Collectors;\n\n");
+        sb.append("import java.util.List;\n\n");
 
         sb.append("@Service\n");
         sb.append("public class ").append(processedClass.serviceName()).append(" {\n\n");
@@ -510,37 +456,30 @@ public class CrudScaffoldingService {
         sb.append("        this.repository = repository;\n");
         sb.append("    }\n\n");
 
-        sb.append("    public List<").append(processedClass.dtoName()).append("> findAll() {\n");
-        sb.append("        return repository.findAll()\n");
-        sb.append("            .stream()\n");
-        sb.append("            .map(this::toDto)\n");
-        sb.append("            .collect(Collectors.toList());\n");
+        sb.append("    public List<").append(processedClass.entityName()).append("> findAll() {\n");
+        sb.append("        return repository.findAll();\n");
         sb.append("    }\n\n");
 
-        sb.append("    public ").append(processedClass.dtoName()).append(" findById(")
+        sb.append("    public ").append(processedClass.entityName()).append(" findById(")
             .append(processedClass.identifier().type()).append(" id) {\n");
-        sb.append("        ").append(processedClass.entityName()).append(" entity = repository.findById(id)\n");
+        sb.append("        return repository.findById(id)\n");
         sb.append("            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, \"")
             .append(processedClass.entityName()).append(" not found\"));\n");
-        sb.append("        return toDto(entity);\n");
         sb.append("    }\n\n");
 
-        sb.append("    public ").append(processedClass.dtoName()).append(" create(")
-            .append(processedClass.dtoName()).append(" dto) {\n");
-        sb.append("        ").append(processedClass.entityName()).append(" entity = toEntity(dto);\n");
-        sb.append("        ").append(processedClass.entityName()).append(" saved = repository.save(entity);\n");
-        sb.append("        return toDto(saved);\n");
+        sb.append("    public ").append(processedClass.entityName()).append(" create(")
+            .append(processedClass.entityName()).append(" entity) {\n");
+        sb.append("        return repository.save(entity);\n");
         sb.append("    }\n\n");
 
-        sb.append("    public ").append(processedClass.dtoName()).append(" update(")
+        sb.append("    public ").append(processedClass.entityName()).append(" update(")
             .append(processedClass.identifier().type()).append(" id, ")
-            .append(processedClass.dtoName()).append(" dto) {\n");
+            .append(processedClass.entityName()).append(" updated) {\n");
         sb.append("        ").append(processedClass.entityName()).append(" entity = repository.findById(id)\n");
         sb.append("            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, \"")
             .append(processedClass.entityName()).append(" not found\"));\n");
-        sb.append("        applyNonIdentifierFields(dto, entity);\n");
-        sb.append("        ").append(processedClass.entityName()).append(" saved = repository.save(entity);\n");
-        sb.append("        return toDto(saved);\n");
+        sb.append("        applyNonIdentifierFields(updated, entity);\n");
+        sb.append("        return repository.save(entity);\n");
         sb.append("    }\n\n");
 
         sb.append("    public void delete(").append(processedClass.identifier().type()).append(" id) {\n");
@@ -551,34 +490,14 @@ public class CrudScaffoldingService {
         sb.append("        repository.deleteById(id);\n");
         sb.append("    }\n\n");
 
-        sb.append("    private ").append(processedClass.dtoName()).append(" toDto(")
-            .append(processedClass.entityName()).append(" entity) {\n");
-        sb.append("        ").append(processedClass.dtoName()).append(" dto = new ")
-            .append(processedClass.dtoName()).append("();\n");
-        for (ProcessedField field : processedClass.fields()) {
-            appendDtoMapping(sb, field, processedClasses);
-        }
-        sb.append("        return dto;\n");
-        sb.append("    }\n\n");
-
-        sb.append("    private ").append(processedClass.entityName()).append(" toEntity(")
-            .append(processedClass.dtoName()).append(" dto) {\n");
-        sb.append("        ").append(processedClass.entityName()).append(" entity = new ")
-            .append(processedClass.entityName()).append("();\n");
-        for (ProcessedField field : processedClass.fields()) {
-            appendEntityAssignment(sb, field, processedClasses);
-        }
-        sb.append("        return entity;\n");
-        sb.append("    }\n\n");
-
         sb.append("    private void applyNonIdentifierFields(")
-            .append(processedClass.dtoName()).append(" dto, ")
-            .append(processedClass.entityName()).append(" entity) {\n");
+            .append(processedClass.entityName()).append(" source, ")
+            .append(processedClass.entityName()).append(" target) {\n");
         for (ProcessedField field : processedClass.fields()) {
             if (field.identifier()) {
                 continue;
             }
-            appendEntityAssignment(sb, field, processedClasses);
+            appendFieldCopy(sb, field, "source", "target");
         }
         sb.append("    }\n");
 
@@ -586,73 +505,16 @@ public class CrudScaffoldingService {
         return sb.toString();
     }
 
-    private void appendDtoMapping(StringBuilder sb, ProcessedField field,
-                                  Map<String, ProcessedClass> processedClasses) {
-        String entityGetter = "get" + StringUtils.capitalize(field.name());
-        if (!field.objectField()) {
-            sb.append("        dto.set").append(StringUtils.capitalize(field.name()))
-                .append("(entity.").append(entityGetter).append("());\n");
-            return;
-        }
-        String dtoSetter = getDtoSetterName(field);
-        String targetIdGetter = "get" + StringUtils.capitalize(resolveTargetIdFieldName(field, processedClasses));
-        if (field.isCollection()) {
-            sb.append("        dto.").append(dtoSetter).append("(entity.")
-                .append(entityGetter).append("() == null ? null : entity.")
-                .append(entityGetter).append("().stream()\n");
-            sb.append("            .map(").append(field.targetEntity()).append("::")
-                .append(targetIdGetter).append(")\n");
-            sb.append("            .collect(Collectors.toList()));\n");
-        } else {
-            sb.append("        dto.").append(dtoSetter).append("(entity.")
-                .append(entityGetter).append("() != null ? entity.")
-                .append(entityGetter).append("().").append(targetIdGetter)
-                .append("() : null);\n");
-        }
-    }
-
-    private void appendEntityAssignment(StringBuilder sb, ProcessedField field,
-                                        Map<String, ProcessedClass> processedClasses) {
-        String entitySetter = "set" + StringUtils.capitalize(field.name());
-        if (!field.objectField()) {
-            String dtoGetter = "get" + StringUtils.capitalize(field.name());
-            sb.append("        entity.").append(entitySetter).append("(dto.")
-                .append(dtoGetter).append("());\n");
-            return;
-        }
-        String dtoGetter = getDtoGetterName(field);
-        String targetIdSetter = "set" + StringUtils.capitalize(resolveTargetIdFieldName(field, processedClasses));
-        if (field.isCollection()) {
-            sb.append("        if (dto.").append(dtoGetter).append("() != null) {\n");
-            sb.append("            List<").append(field.targetEntity()).append("> related = new ArrayList<>();\n");
-            sb.append("            for (").append(resolveTargetIdType(field, processedClasses)).append(" id : dto.")
-                .append(dtoGetter).append("()) {\n");
-            sb.append("                ").append(field.targetEntity()).append(" rel = new ")
-                .append(field.targetEntity()).append("();\n");
-            sb.append("                rel.").append(targetIdSetter).append("(id);\n");
-            sb.append("                related.add(rel);\n");
-            sb.append("            }\n");
-            sb.append("            entity.").append(entitySetter).append("(related);\n");
-            sb.append("        } else {\n");
-            sb.append("            entity.").append(entitySetter).append("(new ArrayList<>());\n");
-            sb.append("        }\n");
-        } else {
-            sb.append("        if (dto.").append(dtoGetter).append("() != null) {\n");
-            sb.append("            ").append(field.targetEntity()).append(" related = new ")
-                .append(field.targetEntity()).append("();\n");
-            sb.append("            related.").append(targetIdSetter).append("(dto.")
-                .append(dtoGetter).append("());\n");
-            sb.append("            entity.").append(entitySetter).append("(related);\n");
-            sb.append("        } else {\n");
-            sb.append("            entity.").append(entitySetter).append("(null);\n");
-            sb.append("        }\n");
-        }
+    private void appendFieldCopy(StringBuilder sb, ProcessedField field, String sourceVar, String targetVar) {
+        String accessor = StringUtils.capitalize(field.name());
+        sb.append("        ").append(targetVar).append(".set").append(accessor).append("(")
+            .append(sourceVar).append(".get").append(accessor).append("());\n");
     }
 
     private String buildRestController(String basePackage, ProcessedClass processedClass) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".controller;\n\n");
-        sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
+        sb.append("import ").append(basePackage).append(".entity.").append(processedClass.entityName()).append(";\n");
         sb.append("import ").append(basePackage).append(".service.").append(processedClass.serviceName()).append(";\n");
         sb.append("import org.springframework.http.HttpStatus;\n");
         sb.append("import org.springframework.web.bind.annotation.*;\n");
@@ -668,28 +530,28 @@ public class CrudScaffoldingService {
         sb.append("    }\n\n");
 
         sb.append("    @GetMapping\n");
-        sb.append("    public List<").append(processedClass.dtoName()).append("> findAll() {\n");
+        sb.append("    public List<").append(processedClass.entityName()).append("> findAll() {\n");
         sb.append("        return service.findAll();\n");
         sb.append("    }\n\n");
 
         sb.append("    @GetMapping(\"/{id}\")\n");
-        sb.append("    public ").append(processedClass.dtoName()).append(" findById(@PathVariable ")
+        sb.append("    public ").append(processedClass.entityName()).append(" findById(@PathVariable ")
             .append(processedClass.identifier().type()).append(" id) {\n");
         sb.append("        return service.findById(id);\n");
         sb.append("    }\n\n");
 
         sb.append("    @PostMapping\n");
         sb.append("    @ResponseStatus(HttpStatus.CREATED)\n");
-        sb.append("    public ").append(processedClass.dtoName()).append(" create(@RequestBody ")
-            .append(processedClass.dtoName()).append(" dto) {\n");
-        sb.append("        return service.create(dto);\n");
+        sb.append("    public ").append(processedClass.entityName()).append(" create(@RequestBody ")
+            .append(processedClass.entityName()).append(" entity) {\n");
+        sb.append("        return service.create(entity);\n");
         sb.append("    }\n\n");
 
         sb.append("    @PutMapping(\"/{id}\")\n");
-        sb.append("    public ").append(processedClass.dtoName()).append(" update(@PathVariable ")
+        sb.append("    public ").append(processedClass.entityName()).append(" update(@PathVariable ")
             .append(processedClass.identifier().type()).append(" id, @RequestBody ")
-            .append(processedClass.dtoName()).append(" dto) {\n");
-        sb.append("        return service.update(id, dto);\n");
+            .append(processedClass.entityName()).append(" entity) {\n");
+        sb.append("        return service.update(id, entity);\n");
         sb.append("    }\n\n");
 
         sb.append("    @DeleteMapping(\"/{id}\")\n");
@@ -711,7 +573,7 @@ public class CrudScaffoldingService {
         List<ProcessedClass> relationshipTargets = resolveRelationshipDependencies(processedClass, processedClasses);
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".controller;\n\n");
-        sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
+        sb.append("import ").append(basePackage).append(".entity.").append(processedClass.entityName()).append(";\n");
         sb.append("import ").append(basePackage).append(".service.").append(processedClass.serviceName()).append(";\n");
         sb.append("import org.springframework.stereotype.Controller;\n");
         sb.append("import org.springframework.ui.Model;\n");
@@ -754,7 +616,7 @@ public class CrudScaffoldingService {
 
         sb.append("    @GetMapping(\"/create\")\n");
         sb.append("    public String showCreateForm(Model model) {\n");
-        sb.append("        model.addAttribute(\"item\", new ").append(processedClass.dtoName()).append("());\n");
+        sb.append("        model.addAttribute(\"item\", new ").append(processedClass.entityName()).append("());\n");
         if (!relationshipFields.isEmpty()) {
             sb.append("        populateRelationships(model);\n");
         }
@@ -772,13 +634,13 @@ public class CrudScaffoldingService {
         sb.append("    }\n\n");
 
         sb.append("    @PostMapping(\"/save\")\n");
-        sb.append("    public String save(@ModelAttribute(\"item\") ").append(processedClass.dtoName()).append(" dto) {\n");
-        sb.append("        if (dto.get").append(StringUtils.capitalize(processedClass.identifier().name()))
+        sb.append("    public String save(@ModelAttribute(\"item\") ").append(processedClass.entityName()).append(" entity) {\n");
+        sb.append("        if (entity.get").append(StringUtils.capitalize(processedClass.identifier().name()))
             .append("() == null) {\n");
-        sb.append("            service.create(dto);\n");
+        sb.append("            service.create(entity);\n");
         sb.append("        } else {\n");
-        sb.append("            service.update(dto.get").append(StringUtils.capitalize(processedClass.identifier().name()))
-            .append("(), dto);\n");
+        sb.append("            service.update(entity.get").append(StringUtils.capitalize(processedClass.identifier().name()))
+            .append("(), entity);\n");
         sb.append("        }\n");
         sb.append("        return \"redirect:/").append(controllerPath).append("\";\n");
         sb.append("    }\n\n");
@@ -806,7 +668,8 @@ public class CrudScaffoldingService {
         return sb.toString();
     }
 
-    private String buildListTemplate(ProcessedClass processedClass, String controllerPath) {
+    private String buildListTemplate(ProcessedClass processedClass, String controllerPath,
+                                     Map<String, ProcessedClass> processedClasses) {
         String idField = processedClass.identifier().name();
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html>\n");
@@ -839,8 +702,8 @@ public class CrudScaffoldingService {
         sb.append("        <tbody>\n");
         sb.append("            <tr th:each=\"item : ${items}\">\n");
         for (ProcessedField field : processedClass.fields()) {
-            sb.append("                <td th:text=\"${item.")
-                .append(getDtoFieldName(field)).append("}\"></td>\n");
+            sb.append("                <td th:text=\"")
+                .append(getListFieldExpression(field, processedClasses)).append("\"></td>\n");
         }
         sb.append("                <td class=\"actions\">\n");
         sb.append("                    <a class=\"button\" th:href=\"@{'/").append(controllerPath).append("/' + ${item.")
@@ -890,9 +753,8 @@ public class CrudScaffoldingService {
             if (isRenderableRelationshipField(field, processedClasses)) {
                 ProcessedClass target = processedClasses.get(field.targetEntity());
                 if (target == null) {
-                    sb.append("        <input type=\"text\" th:field=\"*{").append(getDtoFieldName(field)).append("}\" />\n");
+                    sb.append("        <input type=\"text\" th:field=\"*{").append(field.name()).append("}\" />\n");
                 } else {
-                    String selectName = getDtoFieldName(field);
                     String optionAttribute = getRelationshipOptionsAttributeName(field);
                     String optionVar = getRelationshipOptionVariableName(field);
                     String optionValue = optionVar + "." + target.identifier().name();
@@ -901,8 +763,11 @@ public class CrudScaffoldingService {
                     if (field.isCollection()) {
                         sb.append(" multiple size=\"5\"");
                     }
-                    sb.append(" th:field=\"*{").append(selectName).append("}\">\n");
-                    if (!field.isCollection()) {
+                    if (field.isCollection()) {
+                        sb.append(" th:field=\"*{").append(field.name()).append("}\">\n");
+                    } else {
+                        sb.append(" th:field=\"*{").append(field.name()).append(".")
+                            .append(target.identifier().name()).append("}\">\n");
                         sb.append("            <option value=\"\">Selecione...</option>\n");
                     }
                     sb.append("            <option th:each=\"").append(optionVar).append(" : ${")
@@ -912,7 +777,7 @@ public class CrudScaffoldingService {
                     sb.append("        </select>\n");
                 }
             } else {
-                sb.append("        <input type=\"text\" th:field=\"*{").append(getDtoFieldName(field)).append("}\" />\n");
+                sb.append("        <input type=\"text\" th:field=\"*{").append(field.name()).append("}\" />\n");
             }
         }
         sb.append("        <div class=\"buttons\">\n");
@@ -928,7 +793,6 @@ public class CrudScaffoldingService {
     private String buildServiceTest(String basePackage, ProcessedClass processedClass) {
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(basePackage).append(".service;\n\n");
-        sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
         sb.append("import ").append(basePackage).append(".entity.").append(processedClass.entityName()).append(";\n");
         sb.append("import ").append(basePackage).append(".repository.").append(processedClass.repositoryName()).append(";\n");
         sb.append("import org.junit.jupiter.api.BeforeEach;\n");
@@ -936,6 +800,7 @@ public class CrudScaffoldingService {
         sb.append("import org.junit.jupiter.api.extension.ExtendWith;\n");
         sb.append("import org.mockito.Mock;\n");
         sb.append("import org.mockito.junit.jupiter.MockitoExtension;\n");
+        sb.append("import java.util.Collections;\n");
         sb.append("import java.util.List;\n");
         sb.append("import static org.assertj.core.api.Assertions.assertThat;\n");
         sb.append("import static org.mockito.Mockito.*;\n\n");
@@ -949,11 +814,11 @@ public class CrudScaffoldingService {
         sb.append("        service = new ").append(processedClass.serviceName()).append("(repository);\n");
         sb.append("    }\n\n");
         sb.append("    @Test\n");
-        sb.append("    void findAllShouldReturnDtoList() {\n");
+        sb.append("    void findAllShouldReturnEntityList() {\n");
         sb.append("        ").append(processedClass.entityName()).append(" entity = new ")
             .append(processedClass.entityName()).append("();\n");
         sb.append("        when(repository.findAll()).thenReturn(Collections.singletonList(entity));\n\n");
-        sb.append("        List<").append(processedClass.dtoName()).append("> result = service.findAll();\n\n");
+        sb.append("        List<").append(processedClass.entityName()).append("> result = service.findAll();\n\n");
         sb.append("        assertThat(result).hasSize(1);\n");
         sb.append("        verify(repository).findAll();\n");
         sb.append("    }\n");
@@ -972,7 +837,7 @@ public class CrudScaffoldingService {
 
         StringBuilder sb = new StringBuilder();
         sb.append("package ").append(controllerPackage).append(";\n\n");
-        sb.append("import ").append(basePackage).append(".dto.").append(processedClass.dtoName()).append(";\n");
+        sb.append("import ").append(basePackage).append(".entity.").append(processedClass.entityName()).append(";\n");
         sb.append("import ").append(basePackage).append(".service.").append(processedClass.serviceName()).append(";\n");
         for (ProcessedClass dependency : relationshipDependencies) {
             sb.append("import ").append(basePackage).append(".service.")
@@ -1013,11 +878,11 @@ public class CrudScaffoldingService {
         sb.append("\n");
         sb.append("    @Test\n");
         sb.append("    void shouldListItems() throws Exception {\n");
-        sb.append("        ").append(processedClass.dtoName()).append(" dto = new ")
-            .append(processedClass.dtoName()).append("();\n");
-        sb.append("        dto.").append(getDtoSetterName(processedClass.identifier()))
+        sb.append("        ").append(processedClass.entityName()).append(" entity = new ")
+            .append(processedClass.entityName()).append("();\n");
+        sb.append("        entity.").append(getFieldSetterName(processedClass.identifier()))
             .append("(").append(sampleValue.expression()).append(");\n");
-        sb.append("        when(service.findAll()).thenReturn(Collections.singletonList(dto));\n\n");
+        sb.append("        when(service.findAll()).thenReturn(Collections.singletonList(entity));\n\n");
         sb.append("        mockMvc.perform(get(\"").append(requestPath).append("\"))\n");
         sb.append("            .andExpect(status().isOk())\n");
         if (thymeleafViews) {
@@ -1072,7 +937,7 @@ public class CrudScaffoldingService {
         for (CrudClassDefinition definition : request.getClasses()) {
             sb.append("- ").append(definition.getName()).append("\n");
         }
-        sb.append("\nGenerated layers: Entity, DTO, Repository, Service, Controller.\n");
+        sb.append("\nGenerated layers: Entity, Repository, Service, Controller.\n");
         if (request.isThymeleafViews()) {
             sb.append("Includes Thymeleaf MVC controllers, list and form templates.\n");
         } else {
@@ -1172,45 +1037,6 @@ public class CrudScaffoldingService {
         return field.type();
     }
 
-    private List<GeneratedField> buildDtoFields(ProcessedClass processedClass,
-                                                Map<String, ProcessedClass> processedClasses) {
-        List<GeneratedField> fields = new ArrayList<>();
-        for (ProcessedField field : processedClass.fields()) {
-            if (field.objectField()) {
-                fields.add(new GeneratedField(getDtoFieldName(field), getDtoFieldType(field, processedClasses)));
-            } else {
-                fields.add(new GeneratedField(field.name(), field.type()));
-            }
-        }
-        return fields;
-    }
-
-    private String getDtoFieldName(ProcessedField field) {
-        if (!field.objectField()) {
-            return field.name();
-        }
-        return field.isCollection() ? field.name() + "Ids" : field.name() + "Id";
-    }
-
-    private String getDtoFieldType(ProcessedField field, Map<String, ProcessedClass> processedClasses) {
-        if (!field.objectField()) {
-            return field.type();
-        }
-        String identifierType = resolveTargetIdType(field, processedClasses);
-        if (field.isCollection()) {
-            return "List<" + identifierType + ">";
-        }
-        return identifierType;
-    }
-
-    private String resolveTargetIdType(ProcessedField field, Map<String, ProcessedClass> processedClasses) {
-        ProcessedClass target = processedClasses.get(field.targetEntity());
-        if (target == null) {
-            return "Long";
-        }
-        return target.identifier().type();
-    }
-
     private String resolveTargetIdFieldName(ProcessedField field, Map<String, ProcessedClass> processedClasses) {
         ProcessedClass target = processedClasses.get(field.targetEntity());
         if (target == null) {
@@ -1260,12 +1086,19 @@ public class CrudScaffoldingService {
             .orElse(target.identifier().name());
     }
 
-    private String getDtoSetterName(ProcessedField field) {
-        return "set" + StringUtils.capitalize(getDtoFieldName(field));
+    private String getFieldSetterName(ProcessedField field) {
+        return "set" + StringUtils.capitalize(field.name());
     }
 
-    private String getDtoGetterName(ProcessedField field) {
-        return "get" + StringUtils.capitalize(getDtoFieldName(field));
+    private String getListFieldExpression(ProcessedField field, Map<String, ProcessedClass> processedClasses) {
+        if (!field.objectField()) {
+            return "${item." + field.name() + "}";
+        }
+        if (field.isCollection()) {
+            return "${item." + field.name() + " != null ? #lists.size(item." + field.name() + ") : 0}";
+        }
+        String targetId = resolveTargetIdFieldName(field, processedClasses);
+        return "${item." + field.name() + " != null ? item." + field.name() + "." + targetId + " : ''}";
     }
 
     private String buildRelationshipAnnotations(ProcessedField field, ProcessedClass owner,
@@ -1569,7 +1402,6 @@ public class CrudScaffoldingService {
 
     private record ProcessedClass(
         String entityName,
-        String dtoName,
         String repositoryName,
         String serviceName,
         String controllerName,
