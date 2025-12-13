@@ -234,7 +234,6 @@ function addCrudClass() {
     const newClass = {
         id,
         name: `Class${crudState.classes.length + 1}`,
-        tableName: '',
         structureType: 'CLASS',
         collapsed: false,
         x: 40 + crudState.classes.length * 25,
@@ -337,7 +336,6 @@ function handleStructureTypeChange(clazz, newType) {
     const previousType = clazz.structureType || 'CLASS';
     clazz.structureType = newType;
     if (newType !== 'CLASS') {
-        clazz.tableName = '';
         clazz.fields.forEach(field => {
             field.identifier = false;
             field.objectType = false;
@@ -960,22 +958,6 @@ function buildStructureControls(clazz) {
     typeGroup.appendChild(typeLabel);
     typeGroup.appendChild(typeSelect);
     wrapper.appendChild(typeGroup);
-    if ((clazz.structureType || 'CLASS') === 'CLASS') {
-        const tableGroup = document.createElement('div');
-        tableGroup.className = 'uml-control-group';
-        const tableLabel = document.createElement('label');
-        tableLabel.textContent = 'Tabela';
-        const tableInput = document.createElement('input');
-        tableInput.type = 'text';
-        tableInput.placeholder = 'ex: produtos';
-        tableInput.value = clazz.tableName || '';
-        tableInput.addEventListener('input', e => {
-            clazz.tableName = e.target.value;
-        });
-        tableGroup.appendChild(tableLabel);
-        tableGroup.appendChild(tableInput);
-        wrapper.appendChild(tableGroup);
-    }
     return wrapper;
 }
 
@@ -1285,7 +1267,6 @@ function buildCrudPayload() {
             : [];
         classes.push({
             name: className,
-            tableName: structureType === 'CLASS' ? (clazz.tableName || '').trim() : '',
             fields,
             structureType,
             methods,

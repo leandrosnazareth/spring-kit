@@ -25,7 +25,6 @@ JAVA_11("11", "Java 11 (LTS)",
 
 JAVA_17("17", "Java 17 (LTS)", 
         new String[]{
-                "4.0.1-SNAPSHOT",
                 "4.0.0",
                 "3.5.9-SNAPSHOT",
                 "3.3.0",
