@@ -174,9 +174,7 @@ public class CrudScaffoldingService {
         String repositoryName = entityName + "Repository";
         String serviceName = entityName + "Service";
         String controllerName = entityName + "Controller";
-        String tableName = StringUtils.hasText(definition.getTableName())
-            ? definition.getTableName().trim()
-            : toSnakeCase(entityName);
+        String tableName = "tbl_" + toSnakeCase(entityName);
 
         List<CrudFieldDefinition> fields = new ArrayList<>();
         if (definition.getFields() != null) {
