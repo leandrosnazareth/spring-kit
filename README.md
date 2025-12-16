@@ -4,7 +4,7 @@ Clone do Spring Initializr com suporte para versões LTS do Java 17 e versões c
 
 ## Características
 
-- ✅ Suporte para Java LTS: 8, 11, 17, 21, 25
+- ✅ Suporte para Java LTS: 17
 - ✅ Versões compatíveis do Spring Boot para cada versão do Java
 - ✅ Interface moderna com Thymeleaf
 - ✅ Geração de projetos Maven e Gradle
