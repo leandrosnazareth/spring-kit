@@ -1,7 +1,7 @@
 services:
-  spring-kit:
+  spring-boost:
     build: .
-    image: spring-kit:latest
+    image: spring-boost:latest
     ports:
       - "8080:8080"
     environment:

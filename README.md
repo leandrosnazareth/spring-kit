@@ -1,4 +1,4 @@
-# Spring Kit
+# SpringBoost
 
 Clone do Spring Initializr com suporte para versões LTS do Java 17 e versões compatíveis do Spring Boot.
 
@@ -33,7 +33,7 @@ Acesse: http://localhost:8080
 Gerar a imagem localmente:
 
 ```bash
-docker build -t spring-kit .
+docker build -t spring-boost .
 ```
 
 Subir o container com o docker compose:

@@ -9,9 +9,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.leandrosnazareth</groupId>
-	<artifactId>spring-kit</artifactId>
+	<artifactId>spring-boost</artifactId>
 	<version>3.3.0"</version>
-	<name>spring-kit</name>
+	<name>SpringBoost</name>
 	<description>Demo project for Spring Boot</description>
 	<url/>
 	<licenses>
